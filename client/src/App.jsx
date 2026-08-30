@@ -1,6 +1,6 @@
-﻿import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Routes, Route, NavLink, useLocation } from 'react-router-dom';
-import { clearAuthSession, getAuthUser, getTenantKey, normalizeTenantKey, setAuthSession, setTenantKey } from './tenant';
+import { clearAuthSession, getAuthUser, getTenantKey, setAuthSession, setTenantKey } from './tenant';
 
 import TripManagement from './pages/TripManagement';
 import Billing from './pages/Billing';
@@ -20,6 +20,14 @@ import DriverSettlement from './pages/DriverSettlement';
 import BillingMaster from './pages/BillingMaster';
 import AdminUsers from './pages/AdminUsers';
 
+function dedupeProfiles(items) {
+  const seen = new Set();
+  return (Array.isArray(items) ? items : []).filter(item => {
+    if (!item?.tenantKey || seen.has(item.tenantKey)) return false;
+    seen.add(item.tenantKey);
+    return true;
+  });
+}
 function LoginScreen({ onLogin }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -78,20 +86,21 @@ export default function App() {
       .catch(() => { clearAuthSession(); setUser(null); });
   }, []);
 
+  const loadProfiles = async () => {
+    const res = await fetch('/api/my-company/all');
+    const data = res.ok ? await res.json() : [];
+    const list = dedupeProfiles(data);
+    setProfiles(list);
+    const allowedKeys = list.map(item => item.tenantKey);
+    if (allowedKeys.length && !allowedKeys.includes(tenant)) {
+      const nextTenant = setTenantKey(allowedKeys[0]);
+      setTenant(nextTenant);
+    }
+  };
+
   useEffect(() => {
     if (!user) return;
-    fetch('/api/my-company/all')
-      .then(res => res.ok ? res.json() : [])
-      .then(data => {
-        const list = Array.isArray(data) ? data : [];
-        setProfiles(list);
-        const allowedKeys = list.map(item => item.tenantKey);
-        if (allowedKeys.length && !allowedKeys.includes(tenant)) {
-          const nextTenant = setTenantKey(allowedKeys[0]);
-          setTenant(nextTenant);
-        }
-      })
-      .catch(() => setProfiles([]));
+    loadProfiles().catch(() => setProfiles([]));
   }, [user, tenant]);
 
   const handleTenantChange = (value) => {
@@ -182,7 +191,7 @@ export default function App() {
           <Route path="/locations" element={<LocationMaster />} />
           <Route path="/routes" element={<RouteMaster />} />
           <Route path="/driver-settlements" element={<DriverSettlement />} />
-          {isSuperAdmin && <Route path="/admin/users" element={<AdminUsers profiles={profiles} />} />}
+          {isSuperAdmin && <Route path="/admin/users" element={<AdminUsers profiles={profiles} onCompaniesChanged={loadProfiles} />} />}
         </Routes>
       </main>
     </div>

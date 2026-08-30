@@ -1,12 +1,24 @@
-﻿import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useMemo, useState } from 'react';
 
 const emptyUser = { name: '', email: '', password: '', role: 'USER', status: 'Active', companies: [] };
+const emptyCompany = { tenantKey: '', companyName: '', gstNumber: '', panNumber: '', address: '' };
 
-export default function AdminUsers({ profiles = [] }) {
+function uniqueProfiles(profiles) {
+  const seen = new Set();
+  return profiles.filter(profile => {
+    if (!profile?.tenantKey || seen.has(profile.tenantKey)) return false;
+    seen.add(profile.tenantKey);
+    return true;
+  });
+}
+
+export default function AdminUsers({ profiles = [], onCompaniesChanged }) {
+  const companyProfiles = useMemo(() => uniqueProfiles(profiles), [profiles]);
   const [users, setUsers] = useState([]);
   const [logs, setLogs] = useState([]);
   const [backups, setBackups] = useState([]);
   const [form, setForm] = useState(emptyUser);
+  const [companyForm, setCompanyForm] = useState(emptyCompany);
   const [editingId, setEditingId] = useState(null);
   const [message, setMessage] = useState('');
 
@@ -49,6 +61,22 @@ export default function AdminUsers({ profiles = [] }) {
     setForm(emptyUser);
     setEditingId(null);
     setMessage('User saved.');
+    await load();
+  };
+
+  const createCompany = async (event) => {
+    event.preventDefault();
+    setMessage('');
+    const res = await fetch('/api/my-company', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(companyForm),
+    });
+    const data = await res.json();
+    if (!res.ok) return setMessage(data.error || 'Failed to create company.');
+    setCompanyForm(emptyCompany);
+    setMessage(`Company created: ${data.companyName}`);
+    await onCompaniesChanged?.();
     await load();
   };
 
@@ -95,7 +123,7 @@ export default function AdminUsers({ profiles = [] }) {
             <option value="Inactive">Inactive</option>
           </select>
           <div className="company-checks">
-            {profiles.map(profile => (
+            {companyProfiles.map(profile => (
               <label key={profile.tenantKey}>
                 <input type="checkbox" checked={form.companies.includes(profile.tenantKey)} onChange={() => toggleCompany(profile.tenantKey)} />
                 <span>{profile.companyName || profile.tenantKey}</span>
@@ -120,6 +148,33 @@ export default function AdminUsers({ profiles = [] }) {
                 </div>
                 <button onClick={() => editUser(user)}>Edit</button>
                 <button className="danger-text" onClick={() => deleteUser(user.id)}>Delete</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="admin-grid">
+        <form className="admin-panel" onSubmit={createCompany}>
+          <h3>Create Company</h3>
+          <input placeholder="Company Key" value={companyForm.tenantKey} onChange={e => setCompanyForm({ ...companyForm, tenantKey: e.target.value })} required />
+          <input placeholder="Company Name" value={companyForm.companyName} onChange={e => setCompanyForm({ ...companyForm, companyName: e.target.value })} required />
+          <input placeholder="GST Number" value={companyForm.gstNumber} onChange={e => setCompanyForm({ ...companyForm, gstNumber: e.target.value })} />
+          <input placeholder="PAN Number" value={companyForm.panNumber} onChange={e => setCompanyForm({ ...companyForm, panNumber: e.target.value })} />
+          <input placeholder="Address" value={companyForm.address} onChange={e => setCompanyForm({ ...companyForm, address: e.target.value })} />
+          <button className="primary-btn" type="submit">Create Company</button>
+        </form>
+
+        <div className="admin-panel">
+          <h3>Companies</h3>
+          <div className="compact-list">
+            {companyProfiles.map(profile => (
+              <div className="compact-row" key={profile.tenantKey}>
+                <div>
+                  <strong>{profile.companyName || profile.tenantKey}</strong>
+                  <span>{profile.tenantKey}</span>
+                  <small>{profile.gstNumber || profile.panNumber || 'No tax details saved'}</small>
+                </div>
               </div>
             ))}
           </div>
