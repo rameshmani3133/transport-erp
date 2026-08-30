@@ -28,6 +28,10 @@ function dedupeProfiles(items) {
     return true;
   });
 }
+function companyOptionLabel(profile) {
+  const name = profile.companyName || profile.tenantKey;
+  return `${name} (${profile.tenantKey})`;
+}
 function LoginScreen({ onLogin }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -131,7 +135,7 @@ export default function App() {
             <select id="tenantSelect" value={tenant} onChange={(e) => handleTenantChange(e.target.value)}>
               {profiles.map(profile => (
                 <option key={profile.tenantKey} value={profile.tenantKey}>
-                  {profile.companyName || profile.tenantKey}
+                  {companyOptionLabel(profile)}
                 </option>
               ))}
             </select>
