@@ -15,6 +15,7 @@ datasource db {
 model Vehicle {
   id                Int       @id @default(autoincrement())
   tenantKey         String    @default("default")
+  deletedAt       DateTime?
   regNo             String    
   type              String?
   capacityTon       Float?    
@@ -53,6 +54,7 @@ model Vehicle {
 model Driver {
   id              Int       @id @default(autoincrement())
   tenantKey       String    @default("default")
+  deletedAt       DateTime?
   name            String
   licenseNo       String
   licenseExpiry   DateTime
@@ -74,6 +76,7 @@ model Driver {
 model ClientCompany {
   id            Int               @id @default(autoincrement())
   tenantKey     String            @default("default")
+  deletedAt       DateTime?
   companyName   String
   panNumber     String?
   status        String            @default("Active")
@@ -88,6 +91,7 @@ model ClientCompany {
 model BillingLocation {
   id            Int               @id @default(autoincrement())
   tenantKey     String            @default("default")
+  deletedAt       DateTime?
   locationName  String            
   address       String?
   gstNumber     String?
@@ -101,6 +105,7 @@ model BillingLocation {
 model RouteMaster {
   id              Int             @id @default(autoincrement())
   tenantKey       String          @default("default")
+  deletedAt       DateTime?
   companyId       Int
   company         ClientCompany   @relation(fields: [companyId], references: [id])
   fromLocation    String
@@ -119,6 +124,7 @@ model RouteMaster {
 model Trip {
   id              Int             @id @default(autoincrement())
   tenantKey       String          @default("default")
+  deletedAt       DateTime?
   tripNo          String
   date            DateTime        @default(now())
   docNumber       String?         
@@ -219,6 +225,7 @@ model Trip {
 model Invoice {
   id              Int               @id @default(autoincrement())
   tenantKey       String            @default("default")
+  deletedAt       DateTime?
   invoiceNo       String
   date            DateTime          @default(now())
   dueDate         DateTime?
@@ -247,6 +254,7 @@ model Invoice {
 model InvoicePayment {
   id              Int       @id @default(autoincrement())
   tenantKey       String    @default("default")
+  deletedAt       DateTime?
   invoiceId       Int
   invoice         Invoice   @relation(fields: [invoiceId], references: [id])
   paymentDate     DateTime  @default(now())
@@ -263,6 +271,7 @@ model InvoicePayment {
 model Account {
   id              Int       @id @default(autoincrement())
   tenantKey       String    @default("default")
+  deletedAt       DateTime?
   accountName     String
   accountType     String    
   accountGroup    String    
@@ -286,6 +295,7 @@ model Account {
 model LedgerEntry {
   id              Int       @id @default(autoincrement())
   tenantKey       String    @default("default")
+  deletedAt       DateTime?
   date            DateTime  @default(now())
   
   accountId       Int
@@ -320,6 +330,7 @@ model LedgerEntry {
 model Diesel {
   id              Int       @id @default(autoincrement())
   tenantKey       String    @default("default")
+  deletedAt       DateTime?
   date            DateTime  @default(now())
   
   vehicleId       Int
@@ -349,6 +360,7 @@ model Diesel {
 model VendorSettlement {
   id              Int       @id @default(autoincrement())
   tenantKey       String    @default("default")
+  deletedAt       DateTime?
   settlementNo    String
   date            DateTime  @default(now())
   
@@ -381,6 +393,7 @@ model VendorSettlement {
 model DriverSettlement {
   id                Int       @id @default(autoincrement())
   tenantKey         String    @default("default")
+  deletedAt       DateTime?
   settlementNo      String
   date              DateTime  @default(now())
 
@@ -402,6 +415,7 @@ model DriverSettlement {
 model MyCompanyProfile {
   id              Int      @id @default(autoincrement())
   tenantKey       String   @unique @default("default")
+  deletedAt       DateTime?
   companyName     String
   address         String?
   gstNumber       String?
@@ -415,6 +429,7 @@ model MyCompanyProfile {
 model BillingMaster {
   id              Int      @id @default(autoincrement())
   tenantKey       String   @default("default")
+  deletedAt       DateTime?
   companyName     String
   address         String?
   gstin           String?
@@ -425,3 +440,51 @@ model BillingMaster {
 
   @@unique([tenantKey, companyName])
 }
+
+model User {
+  id             Int                 @id @default(autoincrement())
+  email          String              @unique
+  name           String
+  passwordHash   String
+  role           String              @default("USER")
+  status         String              @default("Active")
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  deletedAt      DateTime?
+  companyAccess  UserCompanyAccess[]
+  auditLogs      AuditLog[]
+}
+
+model UserCompanyAccess {
+  id         Int       @id @default(autoincrement())
+  userId     Int
+  user       User      @relation(fields: [userId], references: [id])
+  tenantKey  String
+  createdAt  DateTime  @default(now())
+  deletedAt  DateTime?
+
+  @@unique([userId, tenantKey])
+}
+
+model AuditLog {
+  id         Int       @id @default(autoincrement())
+  userId     Int?
+  user       User?     @relation(fields: [userId], references: [id])
+  tenantKey  String?
+  action     String
+  entity     String?
+  entityId   String?
+  details    Json?
+  ipAddress  String?
+  createdAt  DateTime  @default(now())
+}
+
+model BackupRun {
+  id          Int       @id @default(autoincrement())
+  status      String
+  localPath   String?
+  cloudPath   String?
+  message     String?
+  createdAt   DateTime  @default(now())
+}
+

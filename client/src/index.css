@@ -283,3 +283,199 @@ th {
     background-color: white;
   }
 }
+
+.user-panel {
+  padding: 14px 15px 0;
+  display: grid;
+  gap: 6px;
+}
+
+.user-panel strong {
+  font-size: 14px;
+  color: #f8fafc;
+}
+
+.user-panel span {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.user-panel button,
+.primary-btn {
+  border: 0;
+  border-radius: 6px;
+  background: #2563eb;
+  color: white;
+  font-weight: 700;
+  padding: 0 14px;
+  cursor: pointer;
+  min-height: 40px;
+}
+
+.user-panel button {
+  background: #334155;
+}
+
+.login-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: #eef2f7;
+}
+
+.login-panel {
+  width: min(420px, 100%);
+  display: grid;
+  gap: 12px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 28px;
+  box-shadow: 0 20px 45px rgba(15, 23, 42, 0.14);
+}
+
+.login-panel h1 {
+  font-size: 24px;
+  color: #0f172a;
+  margin-bottom: 8px;
+}
+
+.login-panel label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #475569;
+}
+
+.login-panel input,
+.admin-panel input,
+.admin-panel select {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 9px 10px;
+  background: #fff;
+  color: #0f172a;
+}
+
+.login-error,
+.status-banner {
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 13px;
+}
+
+.login-error {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.status-banner {
+  background: #e0f2fe;
+  color: #075985;
+  margin-bottom: 14px;
+}
+
+.admin-page {
+  display: grid;
+  gap: 18px;
+}
+
+.page-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.admin-grid {
+  display: grid;
+  grid-template-columns: minmax(280px, 380px) 1fr;
+  gap: 18px;
+  align-items: start;
+}
+
+.admin-panel {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 18px;
+  display: grid;
+  gap: 12px;
+}
+
+.admin-panel h3 {
+  color: #0f172a;
+  font-size: 16px;
+}
+
+.company-checks {
+  display: grid;
+  gap: 8px;
+  max-height: 180px;
+  overflow: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 10px;
+}
+
+.company-checks label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 13px;
+}
+
+.company-checks input {
+  width: auto;
+}
+
+.form-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.compact-list {
+  display: grid;
+  gap: 8px;
+}
+
+.compact-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 10px;
+  align-items: center;
+  border-bottom: 1px solid #e2e8f0;
+  padding: 8px 0;
+}
+
+.compact-row span,
+.compact-row small {
+  display: block;
+  color: #64748b;
+  font-size: 12px;
+  margin-top: 3px;
+}
+
+.compact-row button {
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #fff;
+  padding: 0 10px;
+  cursor: pointer;
+}
+
+.danger-text {
+  color: #b91c1c;
+}
+
+@media (max-width: 900px) {
+  .admin-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .page-header-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}

@@ -1,4 +1,4 @@
-export function normalizeTenantKey(value) {
+﻿export function normalizeTenantKey(value) {
     return String(value || 'default').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-') || 'default';
 }
 
@@ -13,6 +13,30 @@ export function setTenantKey(value) {
     return key;
 }
 
+export function getAuthToken() {
+    return localStorage.getItem('authToken') || '';
+}
+
+export function setAuthSession(token, user) {
+    localStorage.setItem('authToken', token);
+    localStorage.setItem('authUser', JSON.stringify(user));
+    const company = user?.companies?.[0] || 'default';
+    setTenantKey(company);
+}
+
+export function getAuthUser() {
+    try {
+        return JSON.parse(localStorage.getItem('authUser') || 'null');
+    } catch {
+        return null;
+    }
+}
+
+export function clearAuthSession() {
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('authUser');
+}
+
 export function installTenantFetch() {
     if (window.__tenantFetchInstalled) return;
     const nativeFetch = window.fetch.bind(window);
@@ -25,6 +49,8 @@ export function installTenantFetch() {
 
         const headers = new Headers(init.headers || {});
         headers.set('X-Tenant-Key', getTenantKey());
+        const token = getAuthToken();
+        if (token) headers.set('Authorization', `Bearer ${token}`);
         return nativeFetch(input, { ...init, headers });
     };
 

@@ -57,7 +57,7 @@ router.put('/:id', async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
     try {
-        await prisma.routeMaster.deleteMany({ where: withTenant(req, { id: parseInt(req.params.id) }) });
+        await prisma.routeMaster.updateMany({ where: withTenant(req, { id: parseInt(req.params.id) }), data: { deletedAt: new Date() } });
         res.json({ message: "Route deleted." });
     } catch (error) {
         res.status(400).json({ error: "Failed to delete route." });

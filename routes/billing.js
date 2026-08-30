@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 const { withTenant } = require('./tenant');
 const router = express.Router();
@@ -65,9 +65,7 @@ router.put('/:id', async (req, res) => {
 // DELETE PARENT COMPANY
 router.delete('/:id', async (req, res) => {
     try {
-        await prisma.billingMaster.deleteMany({
-            where: withTenant(req, { id: parseInt(req.params.id) })
-        });
+        await prisma.billingMaster.updateMany({ where: withTenant(req, { id: parseInt(req.params.id) }), data: { deletedAt: new Date() } });
         res.json({ message: "Parent Company deleted successfully." });
     } catch (error) {
         console.error("Billing Master Delete Error:", error);
@@ -76,3 +74,4 @@ router.delete('/:id', async (req, res) => {
 });
 
 module.exports = router;
+

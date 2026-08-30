@@ -1,11 +1,17 @@
-const express = require('express');
+﻿const express = require('express');
 const { PrismaClient } = require('@prisma/client');
+const { isSuperAdmin } = require('../lib/security');
+const { normalizeTenantKey } = require('./tenant');
 const router = express.Router();
 const prisma = new PrismaClient();
 
 router.get('/all', async (req, res) => {
     try {
+        const where = isSuperAdmin(req.user)
+            ? { deletedAt: null }
+            : { deletedAt: null, tenantKey: { in: req.user.companies } };
         const profiles = await prisma.myCompanyProfile.findMany({
+            where,
             orderBy: { companyName: 'asc' }
         });
         res.json(profiles);
@@ -14,11 +20,10 @@ router.get('/all', async (req, res) => {
     }
 });
 
-// GET Company Profile
 router.get('/', async (req, res) => {
     try {
-        const profile = await prisma.myCompanyProfile.findUnique({
-            where: { tenantKey: req.tenantKey }
+        const profile = await prisma.myCompanyProfile.findFirst({
+            where: { tenantKey: req.tenantKey, deletedAt: null }
         });
         res.json(profile || {});
     } catch (error) {
@@ -26,15 +31,23 @@ router.get('/', async (req, res) => {
     }
 });
 
-// CREATE or UPDATE Company Profile (Singleton)
 router.post('/', async (req, res) => {
     try {
-        const tenantKey = req.body.tenantKey || req.tenantKey;
-        const existing = await prisma.myCompanyProfile.findUnique({
-            where: { tenantKey }
+        const requestedTenant = req.body.tenantKey ? normalizeTenantKey(req.body.tenantKey) : req.tenantKey;
+        const isCreatingDifferentTenant = requestedTenant !== req.tenantKey;
+        if (isCreatingDifferentTenant && !isSuperAdmin(req.user)) {
+            return res.status(403).json({ error: 'Only superadmins can create another company.' });
+        }
+
+        const existing = await prisma.myCompanyProfile.findFirst({
+            where: { tenantKey: requestedTenant, deletedAt: null }
         });
+        if (!existing && !isSuperAdmin(req.user)) {
+            return res.status(403).json({ error: 'Only superadmins can create companies.' });
+        }
+
         const data = {
-            tenantKey,
+            tenantKey: requestedTenant,
             companyName: req.body.companyName,
             address: req.body.address,
             gstNumber: req.body.gstNumber,
@@ -45,21 +58,12 @@ router.post('/', async (req, res) => {
             signatoryRole: req.body.signatoryRole || 'Authorized Signatory'
         };
 
-        let profile;
-        if (existing && existing.tenantKey === tenantKey) {
-            profile = await prisma.myCompanyProfile.update({
-                where: { id: existing.id },
-                data
-            });
-        } else {
-            profile = await prisma.myCompanyProfile.upsert({
-                where: { tenantKey },
-                update: data,
-                create: data
-            });
-        }
+        const profile = existing
+            ? await prisma.myCompanyProfile.update({ where: { id: existing.id }, data })
+            : await prisma.myCompanyProfile.create({ data });
         res.json(profile);
     } catch (error) {
+        console.error('Company profile save error:', error);
         res.status(400).json({ error: "Failed to save company profile." });
     }
 });

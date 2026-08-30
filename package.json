@@ -7,7 +7,9 @@
     "start": "node app.js",
     "dev": "nodemon app.js",
     "build": "npm install && npx prisma generate && cd client && npm install && npm run build",
-    "dev:agent": "node scripts/dev-agent.js"
+    "dev:agent": "node scripts/dev-agent.js",
+    "setup:security": "node scripts/setup-security.js",
+    "backup": "node scripts/run-backup.js"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",

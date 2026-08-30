@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 const { withTenant } = require('./tenant');
 const router = express.Router();
@@ -62,9 +62,7 @@ router.put('/:id', async (req, res) => {
 // DELETE BILLING LOCATION
 router.delete('/:id', async (req, res) => {
     try {
-        await prisma.billingLocation.deleteMany({
-            where: withTenant(req, { id: parseInt(req.params.id) })
-        });
+        await prisma.billingLocation.updateMany({ where: withTenant(req, { id: parseInt(req.params.id) }), data: { deletedAt: new Date() } });
         res.json({ message: "Location deleted successfully." });
     } catch (error) {
         console.error("Location Delete Error:", error);
@@ -73,3 +71,4 @@ router.delete('/:id', async (req, res) => {
 });
 
 module.exports = router;
+

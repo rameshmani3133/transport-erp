@@ -80,7 +80,7 @@ router.put('/:id', async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
     try {
-        await prisma.vehicle.deleteMany({ where: withTenant(req, { id: parseInt(req.params.id) }) });
+        await prisma.vehicle.updateMany({ where: withTenant(req, { id: parseInt(req.params.id) }), data: { deletedAt: new Date() } });
         res.json({ message: "Vehicle deleted." });
     } catch (error) {
         res.status(400).json({ error: "Failed to delete vehicle. It may be in use." });

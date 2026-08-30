@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 const { withTenant } = require('./tenant');
 const router = express.Router();
@@ -77,9 +77,9 @@ router.post('/', async (req, res) => {
 router.delete('/:id', async (req, res) => {
     try {
         // Delete associated ledger entries first to avoid foreign key constraints
-        await prisma.ledgerEntry.deleteMany({ where: withTenant(req, { settlementId: parseInt(req.params.id) }) });
+        await prisma.ledgerEntry.updateMany({ where: withTenant(req, { settlementId: parseInt(req.params.id) }), data: { deletedAt: new Date() } });
         // Then delete the settlement itself
-        await prisma.vendorSettlement.deleteMany({ where: withTenant(req, { id: parseInt(req.params.id) }) });
+        await prisma.vendorSettlement.updateMany({ where: withTenant(req, { id: parseInt(req.params.id) }), data: { deletedAt: new Date() } });
         res.json({ message: "Settlement deleted." });
     } catch (error) {
         res.status(400).json({ error: "Failed to delete settlement." });
@@ -87,3 +87,4 @@ router.delete('/:id', async (req, res) => {
 });
 
 module.exports = router;
+

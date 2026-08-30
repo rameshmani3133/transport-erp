@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 const { withTenant } = require('./tenant');
 const router = express.Router();
@@ -110,10 +110,10 @@ router.delete('/:id', async (req, res) => {
             // Must delete the linked ledger account first to satisfy database constraints
             const linkedAccount = await tx.account.findFirst({ where: withTenant(req, { driverId: driverId }) });
             if (linkedAccount) {
-                await tx.account.delete({ where: { id: linkedAccount.id } });
+                await tx.account.update({ where: { id: linkedAccount.id }, data: { deletedAt: new Date() } });
             }
             // Now safe to delete the driver
-            await tx.driver.deleteMany({ where: withTenant(req, { id: driverId }) });
+            await tx.driver.updateMany({ where: withTenant(req, { id: driverId }), data: { deletedAt: new Date() } });
         });
         res.json({ message: "Driver and linked account deleted." });
     } catch (error) {
@@ -123,3 +123,4 @@ router.delete('/:id', async (req, res) => {
 });
 
 module.exports = router;
+

@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 const { withTenant } = require('./tenant');
 const router = express.Router();
@@ -112,7 +112,7 @@ router.delete('/:id', async (req, res) => {
         await prisma.$transaction(async (tx) => {
             const id = parseInt(req.params.id);
             // Delete associated ledger entries
-            await tx.ledgerEntry.deleteMany({ where: withTenant(req, { driverSettlementId: id }) });
+            await tx.ledgerEntry.updateMany({ where: withTenant(req, { driverSettlementId: id }), data: { deletedAt: new Date() } });
             
             // Disconnect trips (Prisma does this automatically on delete, but we explicitly reset the expense fields to keep DB clean)
             await tx.trip.updateMany({
@@ -121,7 +121,7 @@ router.delete('/:id', async (req, res) => {
             });
             
             // Delete settlement
-            await tx.driverSettlement.deleteMany({ where: withTenant(req, { id }) });
+            await tx.driverSettlement.updateMany({ where: withTenant(req, { id }), data: { deletedAt: new Date() } });
         });
         res.json({ message: "Deleted successfully" });
     } catch (error) {
@@ -131,3 +131,4 @@ router.delete('/:id', async (req, res) => {
 });
 
 module.exports = router;
+

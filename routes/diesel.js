@@ -77,7 +77,7 @@ router.put('/:id', async (req, res) => {
 // DELETE DIESEL ENTRY
 router.delete('/:id', async (req, res) => {
     try {
-        await prisma.diesel.deleteMany({ where: withTenant(req, { id: parseInt(req.params.id) }) });
+        await prisma.diesel.updateMany({ where: withTenant(req, { id: parseInt(req.params.id) }), data: { deletedAt: new Date() } });
         res.json({ message: "Deleted successfully." });
     } catch (error) {
         res.status(400).json({ error: "Failed to delete entry." });

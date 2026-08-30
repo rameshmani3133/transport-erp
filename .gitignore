@@ -1,4 +1,4 @@
-node_modules/
+﻿node_modules/
 client/node_modules/
 .env
 .env.*
@@ -7,3 +7,5 @@ client/node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+backups/
+

@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 const { withTenant } = require('./tenant');
 const router = express.Router();
@@ -7,9 +7,7 @@ const prisma = new PrismaClient();
 // SMART LEDGER SYNC ENGINE FOR ADVANCES
 async function syncTripAdvanceLedger(req, trip, vehicle) {
     // 1. Wipe old advance ledger entries for this trip (for clean updates)
-    await prisma.ledgerEntry.deleteMany({
-        where: withTenant(req, { tripId: trip.id, narration: { contains: 'Advance' } })
-    });
+    await prisma.ledgerEntry.updateMany({ where: withTenant(req, { tripId: trip.id, narration: { contains: 'Advance' } }), data: { deletedAt: new Date() } });
 
     if (trip.advancePaid > 0 && trip.advanceAccountId) {
         // 2. Credit the Bank/Cash Account (Money left your bank)
@@ -210,8 +208,8 @@ router.put('/:id', async (req, res) => {
 // DELETE TRIP
 router.delete('/:id', async (req, res) => {
     try {
-        await prisma.ledgerEntry.deleteMany({ where: withTenant(req, { tripId: parseInt(req.params.id) }) });
-        await prisma.trip.deleteMany({ where: withTenant(req, { id: parseInt(req.params.id) }) });
+        await prisma.ledgerEntry.updateMany({ where: withTenant(req, { tripId: parseInt(req.params.id) }), data: { deletedAt: new Date() } });
+        await prisma.trip.updateMany({ where: withTenant(req, { id: parseInt(req.params.id) }), data: { deletedAt: new Date() } });
         res.json({ message: "Trip deleted." });
     } catch (error) {
         res.status(400).json({ error: "Failed to delete trip." });
@@ -219,3 +217,4 @@ router.delete('/:id', async (req, res) => {
 });
 
 module.exports = router;
+

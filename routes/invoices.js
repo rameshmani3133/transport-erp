@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 const { withTenant } = require('./tenant');
 const router = express.Router();
@@ -105,10 +105,10 @@ router.delete('/:id', async (req, res) => {
             await tx.trip.updateMany({ where: withTenant(req, { invoiceId: invId }), data: { invoiceId: null, status: "Completed" } });
             
             // Delete Ledger math attached to the invoice
-            await tx.ledgerEntry.deleteMany({ where: withTenant(req, { invoiceId: invId }) });
+            await tx.ledgerEntry.updateMany({ where: withTenant(req, { invoiceId: invId }), data: { deletedAt: new Date() } });
             
             // Delete invoice
-            await tx.invoice.deleteMany({ where: withTenant(req, { id: invId }) });
+            await tx.invoice.updateMany({ where: withTenant(req, { id: invId }), data: { deletedAt: new Date() } });
         });
         res.json({ message: "Invoice deleted successfully." });
     } catch (error) {
@@ -118,3 +118,4 @@ router.delete('/:id', async (req, res) => {
 });
 
 module.exports = router;
+

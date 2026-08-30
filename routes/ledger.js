@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 const { withTenant } = require('./tenant');
 const router = express.Router();
@@ -102,7 +102,7 @@ router.delete('/manual/:id', async (req, res) => {
         if (existing.tripId || existing.invoiceId || existing.settlementId || existing.dieselId) {
             return res.status(403).json({ error: "Cannot delete an automated system entry." });
         }
-        await prisma.ledgerEntry.deleteMany({ where: withTenant(req, { id: parseInt(req.params.id) }) });
+        await prisma.ledgerEntry.updateMany({ where: withTenant(req, { id: parseInt(req.params.id) }), data: { deletedAt: new Date() } });
         res.json({ message: "Entry deleted." });
     } catch (error) {
         res.status(400).json({ error: "Failed to delete entry." });
@@ -159,7 +159,7 @@ router.put('/account/:id', async (req, res) => {
 // DELETE ACCOUNT
 router.delete('/account/:id', async (req, res) => {
     try {
-        await prisma.account.deleteMany({ where: withTenant(req, { id: parseInt(req.params.id) }) });
+        await prisma.account.updateMany({ where: withTenant(req, { id: parseInt(req.params.id) }), data: { deletedAt: new Date() } });
         res.json({ message: "Account deleted successfully." });
     } catch (error) {
         console.error("Account Delete Error:", error);
@@ -169,3 +169,4 @@ router.delete('/account/:id', async (req, res) => {
 });
 
 module.exports = router;
+

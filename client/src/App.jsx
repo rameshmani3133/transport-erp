@@ -1,44 +1,98 @@
-import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import { Routes, Route, NavLink, useLocation } from 'react-router-dom';
-import { getTenantKey, normalizeTenantKey, setTenantKey } from './tenant';
+import { clearAuthSession, getAuthUser, getTenantKey, normalizeTenantKey, setAuthSession, setTenantKey } from './tenant';
 
-// Phase 1: Core Modules
 import TripManagement from './pages/TripManagement';
 import Billing from './pages/Billing';
 import LocationMaster from './pages/LocationMaster';
 import LedgerDashboard from './pages/LedgerDashboard';
 import AccountMaster from './pages/AccountMaster';
-
-// Phase 2: Master Data
 import ClientMaster from './pages/ClientMaster';
 import VehicleMaster from './pages/VehicleMaster';
 import DriverMaster from './pages/DriverMaster';
 import RouteMaster from './pages/RouteMaster';
-import MyCompanyProfile from './pages/MyCompanyProfile'; // <-- Added Import
-
-// Phase 3: Operations & Finance
+import MyCompanyProfile from './pages/MyCompanyProfile';
 import DieselManagement from './pages/DieselManagement';
 import VendorSettlement from './pages/VendorSettlement';
 import Reports from './pages/Reports';
 import InvoicePrint from './pages/InvoicePrint';
 import DriverSettlement from './pages/DriverSettlement';
 import BillingMaster from './pages/BillingMaster';
+import AdminUsers from './pages/AdminUsers';
+
+function LoginScreen({ onLogin }) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const submit = async (event) => {
+    event.preventDefault();
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Login failed.');
+      setAuthSession(data.token, data.user);
+      onLogin(data.user);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="login-shell">
+      <form className="login-panel" onSubmit={submit}>
+        <h1>Logistics ERP</h1>
+        <label>Email</label>
+        <input type="email" value={email} onChange={e => setEmail(e.target.value)} autoComplete="username" required />
+        <label>Password</label>
+        <input type="password" value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" required />
+        {error && <div className="login-error">{error}</div>}
+        <button className="primary-btn" disabled={loading}>{loading ? 'Signing in...' : 'Sign In'}</button>
+      </form>
+    </div>
+  );
+}
 
 export default function App() {
   const location = useLocation();
+  const [user, setUser] = useState(getAuthUser());
   const [tenant, setTenant] = useState(getTenantKey());
   const [profiles, setProfiles] = useState([]);
-  const [customTenant, setCustomTenant] = useState('');
-  
-  // Hide the sidebar if the user is on the Print Invoice page
+  const isSuperAdmin = user?.role === 'SUPERADMIN';
   const isPrintView = location.pathname.includes('/print-invoice');
 
   useEffect(() => {
+    if (!user) return;
+    fetch('/api/auth/me')
+      .then(res => res.ok ? res.json() : Promise.reject())
+      .then(data => setUser(data.user))
+      .catch(() => { clearAuthSession(); setUser(null); });
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
     fetch('/api/my-company/all')
       .then(res => res.ok ? res.json() : [])
-      .then(data => setProfiles(Array.isArray(data) ? data : []))
+      .then(data => {
+        const list = Array.isArray(data) ? data : [];
+        setProfiles(list);
+        const allowedKeys = list.map(item => item.tenantKey);
+        if (allowedKeys.length && !allowedKeys.includes(tenant)) {
+          const nextTenant = setTenantKey(allowedKeys[0]);
+          setTenant(nextTenant);
+        }
+      })
       .catch(() => setProfiles([]));
-  }, [tenant]);
+  }, [user, tenant]);
 
   const handleTenantChange = (value) => {
     const nextTenant = setTenantKey(value);
@@ -46,95 +100,80 @@ export default function App() {
     window.location.reload();
   };
 
-  const handleCustomTenantSubmit = (event) => {
-    event.preventDefault();
-    if (!customTenant.trim()) return;
-    handleTenantChange(normalizeTenantKey(customTenant));
+  const logout = () => {
+    clearAuthSession();
+    setUser(null);
   };
+
+  if (!user) return <LoginScreen onLogin={setUser} />;
 
   return (
     <div className="app-shell">
-      
-      {/* Sidebar Navigation */}
       {!isPrintView && (
         <nav className="sidebar no-print">
-          <div className="sidebar-header">
-            Logistics ERP
+          <div className="sidebar-header">Logistics ERP</div>
+          <div className="user-panel">
+            <strong>{user.name}</strong>
+            <span>{user.role}</span>
+            <button onClick={logout}>Logout</button>
           </div>
           <div className="tenant-panel">
             <label htmlFor="tenantSelect">Company</label>
             <select id="tenantSelect" value={tenant} onChange={(e) => handleTenantChange(e.target.value)}>
-              <option value="default">Default Company</option>
               {profiles.map(profile => (
                 <option key={profile.tenantKey} value={profile.tenantKey}>
                   {profile.companyName || profile.tenantKey}
                 </option>
               ))}
             </select>
-            <form onSubmit={handleCustomTenantSubmit} className="tenant-form">
-              <input
-                type="text"
-                value={customTenant}
-                onChange={(e) => setCustomTenant(e.target.value)}
-                placeholder="New company key"
-                aria-label="New company key"
-              />
-              <button type="submit">Use</button>
-            </form>
           </div>
 
           <div className="nav-group">
             <div className="nav-group-title">Executive</div>
-            <NavLink to="/" className={({isActive}) => isActive ? "nav-link active" : "nav-link"}>Reports Dashboard</NavLink>
+            <NavLink to="/" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Reports Dashboard</NavLink>
           </div>
-
           <div className="nav-group">
             <div className="nav-group-title">Operations</div>
-            <NavLink to="/trips" className={({isActive}) => isActive ? "nav-link active" : "nav-link"}>Trip Dispatch</NavLink>
-            <NavLink to="/diesel" className={({isActive}) => isActive ? "nav-link active" : "nav-link"}>Diesel Tracking</NavLink>
+            <NavLink to="/trips" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Trip Dispatch</NavLink>
+            <NavLink to="/diesel" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Diesel Tracking</NavLink>
           </div>
-
           <div className="nav-group">
             <div className="nav-group-title">Finance & Billing</div>
-            <NavLink to="/billing" className={({isActive}) => isActive ? "nav-link active" : "nav-link"}>Client Invoicing</NavLink>
-            <NavLink to="/settlements" className={({isActive}) => isActive ? "nav-link active" : "nav-link"}>Vendor Settlements</NavLink>
-            <NavLink to="/driver-settlements" className={({isActive}) => isActive ? "nav-link active" : "nav-link"}>Driver Trip Sheets</NavLink>
-            <NavLink to="/ledger" className={({isActive}) => isActive ? "nav-link active" : "nav-link"}>Ledger Dashboard</NavLink>
+            <NavLink to="/billing" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Client Invoicing</NavLink>
+            <NavLink to="/settlements" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Vendor Settlements</NavLink>
+            <NavLink to="/driver-settlements" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Driver Trip Sheets</NavLink>
+            <NavLink to="/ledger" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Ledger Dashboard</NavLink>
           </div>
-
           <div className="nav-group">
             <div className="nav-group-title">Master Data</div>
-            {/* Added Company Settings to the sidebar */}
-            <NavLink to="/my-company" className={({isActive}) => isActive ? "nav-link active" : "nav-link"}>Company Settings</NavLink>
-            <NavLink to="/billing-master" className={({isActive}) => isActive ? "nav-link active" : "nav-link"}>Billing Master</NavLink>
-            <NavLink to="/clients" className={({isActive}) => isActive ? "nav-link active" : "nav-link"}>Client Companies</NavLink>
-            <NavLink to="/accounts" className={({isActive}) => isActive ? "nav-link active" : "nav-link"}>Chart of Accounts</NavLink>
-            <NavLink to="/vehicles" className={({isActive}) => isActive ? "nav-link active" : "nav-link"}>Vehicles</NavLink>
-            <NavLink to="/drivers" className={({isActive}) => isActive ? "nav-link active" : "nav-link"}>Drivers</NavLink>
-            <NavLink to="/locations" className={({isActive}) => isActive ? "nav-link active" : "nav-link"}>Billing Locations</NavLink>
-            <NavLink to="/routes" className={({isActive}) => isActive ? "nav-link active" : "nav-link"}>Routes & Rates</NavLink>
+            <NavLink to="/my-company" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Company Settings</NavLink>
+            <NavLink to="/billing-master" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Billing Master</NavLink>
+            <NavLink to="/clients" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Client Companies</NavLink>
+            <NavLink to="/accounts" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Chart of Accounts</NavLink>
+            <NavLink to="/vehicles" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Vehicles</NavLink>
+            <NavLink to="/drivers" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Drivers</NavLink>
+            <NavLink to="/locations" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Billing Locations</NavLink>
+            <NavLink to="/routes" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Routes & Rates</NavLink>
           </div>
+          {isSuperAdmin && (
+            <div className="nav-group">
+              <div className="nav-group-title">Admin</div>
+              <NavLink to="/admin/users" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Users & Backups</NavLink>
+            </div>
+          )}
         </nav>
       )}
 
-      {/* Main Content Router */}
-      <main className={isPrintView ? "main-content print-mode" : "main-content"}>
+      <main className={isPrintView ? 'main-content print-mode' : 'main-content'}>
         <Routes>
-          {/* Executive & Reports */}
           <Route path="/" element={<Reports />} />
-          
-          {/* Operations */}
           <Route path="/trips" element={<TripManagement />} />
           <Route path="/diesel" element={<DieselManagement />} />
-          
-          {/* Finance */}
           <Route path="/billing" element={<Billing />} />
           <Route path="/settlements" element={<VendorSettlement />} />
           <Route path="/ledger" element={<LedgerDashboard />} />
           <Route path="/print-invoice/:id" element={<InvoicePrint />} />
-          
-          {/* Master Data Setup */}
-          <Route path="/my-company" element={<MyCompanyProfile />} /> {/* <-- Added Route */}
+          <Route path="/my-company" element={<MyCompanyProfile isSuperAdmin={isSuperAdmin} />} />
           <Route path="/billing-master" element={<BillingMaster />} />
           <Route path="/clients" element={<ClientMaster />} />
           <Route path="/accounts" element={<AccountMaster />} />
@@ -143,9 +182,9 @@ export default function App() {
           <Route path="/locations" element={<LocationMaster />} />
           <Route path="/routes" element={<RouteMaster />} />
           <Route path="/driver-settlements" element={<DriverSettlement />} />
+          {isSuperAdmin && <Route path="/admin/users" element={<AdminUsers profiles={profiles} />} />}
         </Routes>
       </main>
-
     </div>
   );
 }
