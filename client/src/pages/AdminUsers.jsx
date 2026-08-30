@@ -1,15 +1,25 @@
-﻿import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 
 const emptyUser = { name: '', email: '', password: '', role: 'USER', status: 'Active', companies: [] };
 const emptyCompany = { tenantKey: '', companyName: '', gstNumber: '', panNumber: '', address: '' };
 
+function profileScore(profile) {
+  const isPlaceholder = String(profile.companyName || '').trim().toLowerCase() === 'default company';
+  const filledFields = ['gstNumber', 'panNumber', 'address', 'bankName', 'accountNumber']
+    .filter(field => String(profile[field] || '').trim()).length;
+  return (isPlaceholder ? 0 : 10) + filledFields;
+}
+
 function uniqueProfiles(profiles) {
-  const seen = new Set();
-  return profiles.filter(profile => {
-    if (!profile?.tenantKey || seen.has(profile.tenantKey)) return false;
-    seen.add(profile.tenantKey);
-    return true;
-  });
+  const byTenant = new Map();
+  for (const profile of Array.isArray(profiles) ? profiles : []) {
+    if (!profile?.tenantKey) continue;
+    const current = byTenant.get(profile.tenantKey);
+    if (!current || profileScore(profile) > profileScore(current)) {
+      byTenant.set(profile.tenantKey, profile);
+    }
+  }
+  return Array.from(byTenant.values()).sort((a, b) => (a.companyName || '').localeCompare(b.companyName || ''));
 }
 
 export default function AdminUsers({ profiles = [], onCompaniesChanged }) {

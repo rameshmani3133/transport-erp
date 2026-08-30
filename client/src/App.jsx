@@ -20,13 +20,23 @@ import DriverSettlement from './pages/DriverSettlement';
 import BillingMaster from './pages/BillingMaster';
 import AdminUsers from './pages/AdminUsers';
 
+function profileScore(profile) {
+  const isPlaceholder = String(profile.companyName || '').trim().toLowerCase() === 'default company';
+  const filledFields = ['gstNumber', 'panNumber', 'address', 'bankName', 'accountNumber']
+    .filter(field => String(profile[field] || '').trim()).length;
+  return (isPlaceholder ? 0 : 10) + filledFields;
+}
+
 function dedupeProfiles(items) {
-  const seen = new Set();
-  return (Array.isArray(items) ? items : []).filter(item => {
-    if (!item?.tenantKey || seen.has(item.tenantKey)) return false;
-    seen.add(item.tenantKey);
-    return true;
-  });
+  const byTenant = new Map();
+  for (const item of Array.isArray(items) ? items : []) {
+    if (!item?.tenantKey) continue;
+    const current = byTenant.get(item.tenantKey);
+    if (!current || profileScore(item) > profileScore(current)) {
+      byTenant.set(item.tenantKey, item);
+    }
+  }
+  return Array.from(byTenant.values()).sort((a, b) => (a.companyName || '').localeCompare(b.companyName || ''));
 }
 function companyOptionLabel(profile) {
   const name = profile.companyName || profile.tenantKey;
