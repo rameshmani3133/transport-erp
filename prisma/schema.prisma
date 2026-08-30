@@ -1,0 +1,427 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ==========================================
+// MASTER DATA MODULES
+// ==========================================
+
+model Vehicle {
+  id                Int       @id @default(autoincrement())
+  tenantKey         String    @default("default")
+  regNo             String    
+  type              String?
+  capacityTon       Float?    
+  ownershipType     String?
+  ownerName         String?
+  regDate           DateTime?
+  fcExpiry          DateTime?
+  permit1YrExpiry   DateTime?
+  permit5YrExpiry   DateTime?
+  qTaxExpiry        DateTime?
+  pucExpiry         DateTime?
+  fitmentDetails    String?   
+  status            String?   @default("Active")
+  rule18Expiry      DateTime?
+  rule19Expiry      DateTime?
+  rule43Expiry      DateTime?
+  pesoExpiry        DateTime?
+  sv1Num            String?
+  sv2Num            String?
+  sv3Num            String?
+  iv1Num            String?
+  iv2Num            String?
+  iv3Num            String?
+  
+  trips             Trip[]
+  diesels           Diesel[]
+  ledgerEntries     LedgerEntry[]
+  settlements       VendorSettlement[]
+
+  vendorAccountId Int?
+  vendorAccount   Account? @relation("VehicleVendor", fields: [vendorAccountId], references: [id])
+
+  @@unique([tenantKey, regNo])
+}
+
+model Driver {
+  id              Int       @id @default(autoincrement())
+  tenantKey       String    @default("default")
+  name            String
+  licenseNo       String
+  licenseExpiry   DateTime
+  hazmatLicense   Boolean   @default(false)
+  hazmatExpiry    DateTime?
+  address         String?
+  phone           String
+  aadhaarNumber   String
+  status          String    @default("Active")
+  
+  diesels         Diesel[]
+  trips           Trip[]    
+  driverSettlements DriverSettlement[] 
+
+  @@unique([tenantKey, licenseNo])
+  @@unique([tenantKey, aadhaarNumber])
+}
+
+model ClientCompany {
+  id            Int               @id @default(autoincrement())
+  tenantKey     String            @default("default")
+  companyName   String
+  panNumber     String?
+  status        String            @default("Active")
+  
+  locations     BillingLocation[]
+  routes        RouteMaster[]     
+  trips         Trip[]            
+
+  @@unique([tenantKey, companyName])
+}
+
+model BillingLocation {
+  id            Int               @id @default(autoincrement())
+  tenantKey     String            @default("default")
+  locationName  String            
+  address       String?
+  gstNumber     String?
+  invoiceFormat String            @default("Standard") 
+  companyId     Int
+  company       ClientCompany     @relation(fields: [companyId], references: [id])
+  
+  invoices      Invoice[]
+}
+
+model RouteMaster {
+  id              Int             @id @default(autoincrement())
+  tenantKey       String          @default("default")
+  companyId       Int
+  company         ClientCompany   @relation(fields: [companyId], references: [id])
+  fromLocation    String
+  toLocation      String
+  rtkm            Float           
+  calcType        String          @default("PerTon") 
+  defaultRate     Float           @default(0)
+  
+  trips           Trip[]
+}
+
+// ==========================================
+// CORE OPERATIONS: TRIP MANAGEMENT
+// ==========================================
+
+model Trip {
+  id              Int             @id @default(autoincrement())
+  tenantKey       String          @default("default")
+  tripNo          String
+  date            DateTime        @default(now())
+  docNumber       String?         
+  
+  companyId       Int
+  company         ClientCompany   @relation(fields: [companyId], references: [id])
+  routeId         Int
+  route           RouteMaster     @relation(fields: [routeId], references: [id])
+  vehicleId       Int
+  vehicle         Vehicle         @relation(fields: [vehicleId], references: [id])
+  driverId        Int?
+  driver          Driver?         @relation(fields: [driverId], references: [id])
+  
+  invoiceId       Int?
+  invoice         Invoice?        @relation(fields: [invoiceId], references: [id])
+  settlementId    Int?
+  settlement      VendorSettlement? @relation(fields: [settlementId], references: [id])
+  
+  driverSettlementId Int?
+  driverSettlement   DriverSettlement? @relation(fields: [driverSettlementId], references: [id])
+  
+  tripKm          Float?          @default(0)
+  
+  dieselAccountId Int?
+  dieselAccount   Account?        @relation("DieselAccountTrips", fields: [dieselAccountId], references: [id])
+  advanceAccountId Int?
+  advanceAccount  Account?        @relation("AdvanceAccountTrips", fields: [advanceAccountId], references: [id])
+  
+  dieselLiters    Float           @default(0)
+  dieselRate      Float           @default(0)
+  dieselAmount    Float           @default(0)
+  
+  advanceDate     DateTime?
+  advancePaid     Float           @default(0)
+  
+  trailerLength   Float?
+  trailerWidth    Float?
+  trailerHeight   Float?
+  billWeight      Float           @default(0)
+  guaranteeWeight Float           @default(0)
+  netWeight       Float           @default(0) 
+  extraSizeFeet   Float           @default(0)
+  haltingDays     Float           @default(0)
+  
+  clientCalcType        String    @default("PerTon") 
+  clientRate            Float     @default(0)
+  clientFreight         Float     @default(0)
+  overWeightCharge      Float     @default(0)
+  clientHaltingRate     Float     @default(0) 
+  haltingCharge         Float     @default(0) 
+  clientExtraSizeRate   Float     @default(0) 
+  clientExtraSizeCharge Float     @default(0) 
+  totalClientBill       Float     @default(0)
+  
+  vendorCalcType        String    @default("PerTon")
+  vendorRate            Float     @default(0)
+  vendorFreight         Float     @default(0)
+  vendorHaltingRate     Float     @default(0) 
+  vendorHaltingCharge   Float     @default(0) 
+  vendorExtraSizeRate   Float     @default(0) 
+  vendorExtraSizeCharge Float     @default(0) 
+  commission            Float     @default(0)
+  netTruckPayout        Float     @default(0)
+
+  // ========================================
+  // DRIVER ON-ROAD EXPENSES (Filled at Payroll)
+  // ========================================
+  rtoPc             Float     @default(0)
+  parking           Float     @default(0)
+  loading           Float     @default(0)
+  unloading         Float     @default(0)
+  otherBillsAmount  Float     @default(0)
+  otherBillsDesc    String?
+  
+  dieselBy              String    @default("Transporter") 
+  status                String    @default("In-Transit") 
+  
+  diesels               Diesel[]
+  ledgerEntries         LedgerEntry[]
+
+  length                 Float?
+  width                  Float?
+  height                 Float?
+  
+  odcSize                Float?
+  clientOdcRate          Float?   @default(0)
+  vendorOdcRate          Float?   @default(0)  
+  clientHaltRate         Float?   @default(0)
+  vendorHaltRate         Float?   @default(0)
+
+  @@unique([tenantKey, tripNo])
+}
+
+// ==========================================
+// BILLING & INVOICING MODULE
+// ==========================================
+
+model Invoice {
+  id              Int               @id @default(autoincrement())
+  tenantKey       String            @default("default")
+  invoiceNo       String
+  date            DateTime          @default(now())
+  dueDate         DateTime?
+  locationId      Int
+  location        BillingLocation   @relation(fields: [locationId], references: [id])
+  
+  trips           Trip[]            
+  subTotal        Float             @default(0) 
+  cgst            Float             @default(0)
+  sgst            Float             @default(0)
+  igst            Float             @default(0)
+  otherCharges    Float             @default(0) 
+  grandTotal      Float             @default(0)
+  
+  advanceReceived Float             @default(0)
+  totalPaid       Float             @default(0) 
+  balanceAmount   Float             @default(0)
+  status          String            @default("Unpaid") 
+  
+  payments        InvoicePayment[]
+  ledgerEntries   LedgerEntry[]
+
+  @@unique([tenantKey, invoiceNo])
+}
+
+model InvoicePayment {
+  id              Int       @id @default(autoincrement())
+  tenantKey       String    @default("default")
+  invoiceId       Int
+  invoice         Invoice   @relation(fields: [invoiceId], references: [id])
+  paymentDate     DateTime  @default(now())
+  amount          Float
+  paymentMode     String    
+  referenceNo     String?   
+  remarks         String?
+}
+
+// ==========================================
+// ACCOUNTING & GENERAL LEDGER MODULE
+// ==========================================
+
+model Account {
+  id              Int       @id @default(autoincrement())
+  tenantKey       String    @default("default")
+  accountName     String
+  accountType     String    
+  accountGroup    String    
+  clientId        Int?
+  driverId        Int?
+  openingBalance  Float     @default(0)
+  balanceType     String    @default("Dr") 
+  
+  entries         LedgerEntry[]
+  dieselTrips     Trip[]    @relation("DieselAccountTrips")
+  advanceTrips    Trip[]    @relation("AdvanceAccountTrips")
+  vendorVehicles  Vehicle[] @relation("VehicleVendor")
+  dieselPumps     Diesel[]  @relation("DieselPumpAccount")
+  vendorSettlements VendorSettlement[] @relation("VendorSettlements")
+
+  @@unique([tenantKey, accountName])
+  @@unique([tenantKey, clientId])
+  @@unique([tenantKey, driverId])
+}
+
+model LedgerEntry {
+  id              Int       @id @default(autoincrement())
+  tenantKey       String    @default("default")
+  date            DateTime  @default(now())
+  
+  accountId       Int
+  account         Account   @relation(fields: [accountId], references: [id])
+  type            String    
+  amount          Float
+  narration       String?   
+  
+  vehicleId       Int?
+  vehicle         Vehicle?  @relation(fields: [vehicleId], references: [id]) 
+  
+  tripId          Int?
+  trip            Trip?     @relation(fields: [tripId], references: [id])    
+  
+  invoiceId       Int?
+  invoice         Invoice?  @relation(fields: [invoiceId], references: [id]) 
+  
+  dieselId        Int?
+  diesel          Diesel?   @relation(fields: [dieselId], references: [id]) 
+  
+  settlementId    Int?
+  settlement      VendorSettlement? @relation(fields: [settlementId], references: [id]) 
+  
+  driverSettlementId Int?
+  driverSettlement   DriverSettlement? @relation(fields: [driverSettlementId], references: [id]) 
+}
+
+// ==========================================
+// DIESEL MANAGEMENT MODULE
+// ==========================================
+
+model Diesel {
+  id              Int       @id @default(autoincrement())
+  tenantKey       String    @default("default")
+  date            DateTime  @default(now())
+  
+  vehicleId       Int
+  vehicle         Vehicle   @relation(fields: [vehicleId], references: [id])
+  tripId          Int?      
+  trip            Trip?     @relation(fields: [tripId], references: [id])
+  driverId        Int?
+  driver          Driver?   @relation(fields: [driverId], references: [id])
+  
+  pumpAccountId   Int?
+  pumpAccount     Account?  @relation("DieselPumpAccount", fields: [pumpAccountId], references: [id])
+  pumpName        String?    
+  paymentMode     String?    
+  
+  slipNumber      String?
+  quantityLiters  Float
+  ratePerLiter    Float
+  totalAmount     Float
+  
+  ledgerEntries   LedgerEntry[]
+}
+
+// ==========================================
+// VENDOR / TRUCK OWNER SETTLEMENT MODULE
+// ==========================================
+
+model VendorSettlement {
+  id              Int       @id @default(autoincrement())
+  tenantKey       String    @default("default")
+  settlementNo    String
+  date            DateTime  @default(now())
+  
+  vehicleId       Int?      
+  vehicle         Vehicle?  @relation(fields: [vehicleId], references: [id])
+  vendorId        Int?
+  vendor          Account?  @relation("VendorSettlements", fields: [vendorId], references: [id])
+  
+  trips           Trip[]
+  
+  totalFreight    Float     @default(0) 
+  totalHalting    Float     @default(0)
+  totalExtraSize  Float     @default(0)
+  grossAmount     Float     @default(0) 
+  totalAdvances   Float     @default(0) 
+  totalCommission Float     @default(0) 
+  otherDeductions Float     @default(0) 
+  netPayable      Float     @default(0)
+  status          String    @default("Unpaid") 
+  
+  ledgerEntries   LedgerEntry[]
+
+  @@unique([tenantKey, settlementNo])
+}
+
+// ==========================================
+// DRIVER MONTHLY SETTLEMENT (PAYROLL) MODULE
+// ==========================================
+
+model DriverSettlement {
+  id                Int       @id @default(autoincrement())
+  tenantKey         String    @default("default")
+  settlementNo      String
+  date              DateTime  @default(now())
+
+  driverId          Int
+  driver            Driver    @relation(fields: [driverId], references: [id])
+  trips             Trip[]    
+
+  // Bulk Driver Pay & Aggregates
+  driverSalary      Float     @default(0) 
+  totalExpenses     Float     @default(0)
+  advanceDeducted   Float     @default(0) 
+  netPayable        Float     @default(0) 
+
+  ledgerEntries     LedgerEntry[]
+
+  @@unique([tenantKey, settlementNo])
+}
+
+model MyCompanyProfile {
+  id              Int      @id @default(autoincrement())
+  tenantKey       String   @unique @default("default")
+  companyName     String
+  address         String?
+  gstNumber       String?
+  panNumber       String?
+  bankName        String?
+  accountNumber   String?
+  ifscCode        String?
+  signatoryRole   String? 
+}
+
+model BillingMaster {
+  id              Int      @id @default(autoincrement())
+  tenantKey       String   @default("default")
+  companyName     String
+  address         String?
+  gstin           String?
+  pan             String?
+  bankName        String?
+  accountNumber   String?
+  ifscCode        String?
+
+  @@unique([tenantKey, companyName])
+}
