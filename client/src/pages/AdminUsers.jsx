@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+﻿import React, { useEffect, useMemo, useState } from 'react';
 
 const emptyUser = { name: '', email: '', password: '', role: 'USER', status: 'Active', companies: [] };
 const emptyCompany = { id: null, tenantKey: '', companyName: '', gstNumber: '', panNumber: '', address: '' };
@@ -27,6 +27,7 @@ export default function AdminUsers({ profiles = [], onCompaniesChanged }) {
   const [users, setUsers] = useState([]);
   const [logs, setLogs] = useState([]);
   const [backups, setBackups] = useState([]);
+  const [deletedCompanies, setDeletedCompanies] = useState([]);
   const [form, setForm] = useState(emptyUser);
   const [companyForm, setCompanyForm] = useState(emptyCompany);
   const [editingId, setEditingId] = useState(null);
@@ -34,17 +35,24 @@ export default function AdminUsers({ profiles = [], onCompaniesChanged }) {
   const [message, setMessage] = useState('');
 
   const load = async () => {
-    const [usersRes, logsRes, backupsRes] = await Promise.all([
+    const [usersRes, logsRes, backupsRes, deletedCompaniesRes] = await Promise.all([
       fetch('/api/admin/users'),
       fetch('/api/admin/audit-logs'),
       fetch('/api/admin/backups'),
+      fetch('/api/my-company/deleted/all'),
     ]);
     if (usersRes.ok) setUsers(await usersRes.json());
     if (logsRes.ok) setLogs(await logsRes.json());
     if (backupsRes.ok) setBackups(await backupsRes.json());
+    if (deletedCompaniesRes.ok) setDeletedCompanies(await deletedCompaniesRes.json());
   };
 
   useEffect(() => { load().catch(() => setMessage('Failed to load admin data.')); }, []);
+
+  const refreshCompanies = async () => {
+    await onCompaniesChanged?.();
+    await load();
+  };
 
   const toggleCompany = (tenantKey) => {
     setForm(prev => ({
@@ -55,11 +63,6 @@ export default function AdminUsers({ profiles = [], onCompaniesChanged }) {
     }));
   };
 
-  const refreshCompanies = async () => {
-    await onCompaniesChanged?.();
-    await load();
-  };
-
   const submit = async (event) => {
     event.preventDefault();
     setMessage('');
@@ -67,11 +70,7 @@ export default function AdminUsers({ profiles = [], onCompaniesChanged }) {
     const method = editingId ? 'PUT' : 'POST';
     const payload = { ...form };
     if (editingId && !payload.password) delete payload.password;
-    const res = await fetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
+    const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
     const data = await res.json();
     if (!res.ok) return setMessage(data.error || 'Failed to save user.');
     setForm(emptyUser);
@@ -85,11 +84,7 @@ export default function AdminUsers({ profiles = [], onCompaniesChanged }) {
     setMessage('');
     const url = editingCompanyKey ? `/api/my-company/profile/${companyForm.id}` : '/api/my-company';
     const method = editingCompanyKey ? 'PUT' : 'POST';
-    const res = await fetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(companyForm),
-    });
+    const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(companyForm) });
     const data = await res.json();
     if (!res.ok) return setMessage(data.error || 'Failed to save company.');
     setCompanyForm(emptyCompany);
@@ -136,7 +131,24 @@ export default function AdminUsers({ profiles = [], onCompaniesChanged }) {
     if (!res.ok) return setMessage(data.error || 'Failed to delete company.');
     if (editingCompanyKey === tenantKey) cancelCompanyEdit();
     setForm(prev => ({ ...prev, companies: prev.companies.filter(key => key !== tenantKey) }));
-    setMessage('Company deleted.');
+    setMessage('Company moved to recycle bin.');
+    await refreshCompanies();
+  };
+
+  const restoreCompany = async (profile) => {
+    const res = await fetch(`/api/my-company/profile/${profile.id}/restore`, { method: 'PATCH' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return setMessage(data.error || 'Failed to restore company.');
+    setMessage(`Company restored: ${data.companyName}`);
+    await refreshCompanies();
+  };
+
+  const permanentlyDeleteCompany = async (profile) => {
+    if (!confirm(`Permanently delete ${profile.companyName || profile.tenantKey}? This cannot be undone.`)) return;
+    const res = await fetch(`/api/my-company/profile/${profile.id}/permanent`, { method: 'DELETE' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return setMessage(data.error || 'Failed to permanently delete company.');
+    setMessage('Company permanently deleted.');
     await refreshCompanies();
   };
 
@@ -231,6 +243,24 @@ export default function AdminUsers({ profiles = [], onCompaniesChanged }) {
               </div>
             ))}
           </div>
+        </div>
+      </section>
+
+      <section className="admin-panel">
+        <h3>Company Recycle Bin</h3>
+        <div className="compact-list">
+          {deletedCompanies.length === 0 && <div className="empty-state">No deleted companies.</div>}
+          {deletedCompanies.map(profile => (
+            <div className="compact-row" key={profile.id}>
+              <div>
+                <strong>{profile.companyName || profile.tenantKey}</strong>
+                <span>{profile.tenantKey} | Deleted {new Date(profile.deletedAt).toLocaleString()}</span>
+                <small>{profile.gstNumber || profile.panNumber || 'No tax details saved'}</small>
+              </div>
+              <button onClick={() => restoreCompany(profile)}>Restore</button>
+              <button className="danger-text" onClick={() => permanentlyDeleteCompany(profile)}>Permanent Delete</button>
+            </div>
+          ))}
         </div>
       </section>
 

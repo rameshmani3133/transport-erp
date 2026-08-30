@@ -70,6 +70,62 @@ router.post('/', async (req, res) => {
 
 
 
+
+router.get('/deleted/all', async (req, res) => {
+    try {
+        if (!isSuperAdmin(req.user)) {
+            return res.status(403).json({ error: 'Only superadmins can view deleted companies.' });
+        }
+        const profiles = await prisma.myCompanyProfile.findMany({
+            where: { deletedAt: { not: null } },
+            orderBy: { deletedAt: 'desc' }
+        });
+        res.json(profiles);
+    } catch (error) {
+        console.error('Deleted company profile fetch error:', error);
+        res.status(500).json({ error: 'Failed to fetch deleted companies.' });
+    }
+});
+
+router.patch('/profile/:id/restore', async (req, res) => {
+    try {
+        if (!isSuperAdmin(req.user)) {
+            return res.status(403).json({ error: 'Only superadmins can restore companies.' });
+        }
+        const id = parseInt(req.params.id, 10);
+        const profile = await prisma.myCompanyProfile.findFirst({ where: { id, deletedAt: { not: null } } });
+        if (!profile) return res.status(404).json({ error: 'Deleted company not found.' });
+
+        const restored = await prisma.myCompanyProfile.update({
+            where: { id },
+            data: { deletedAt: null }
+        });
+        res.json(restored);
+    } catch (error) {
+        console.error('Company profile restore error:', error);
+        res.status(400).json({ error: 'Failed to restore company.' });
+    }
+});
+
+router.delete('/profile/:id/permanent', async (req, res) => {
+    try {
+        if (!isSuperAdmin(req.user)) {
+            return res.status(403).json({ error: 'Only superadmins can permanently delete companies.' });
+        }
+        const id = parseInt(req.params.id, 10);
+        const profile = await prisma.myCompanyProfile.findFirst({ where: { id, deletedAt: { not: null } } });
+        if (!profile) return res.status(404).json({ error: 'Deleted company not found.' });
+
+        await prisma.$transaction(async (tx) => {
+            await tx.userCompanyAccess.deleteMany({ where: { tenantKey: profile.tenantKey, deletedAt: { not: null } } });
+            await tx.myCompanyProfile.delete({ where: { id } });
+        });
+        res.json({ message: 'Company permanently deleted.', tenantKey: profile.tenantKey });
+    } catch (error) {
+        console.error('Company profile permanent delete error:', error);
+        res.status(400).json({ error: 'Failed to permanently delete company.' });
+    }
+});
 router.put('/profile/:id', async (req, res) => {
     try {
         if (!isSuperAdmin(req.user)) {

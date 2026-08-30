@@ -479,3 +479,9 @@ th {
     flex-direction: column;
   }
 }
+
+.empty-state {
+  color: #64748b;
+  font-size: 13px;
+  padding: 8px 0;
+}
