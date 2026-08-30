@@ -1,4 +1,4 @@
-﻿const express = require('express');
+const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 const { isSuperAdmin } = require('../lib/security');
 const { normalizeTenantKey } = require('./tenant');
@@ -68,4 +68,86 @@ router.post('/', async (req, res) => {
     }
 });
 
+
+
+router.put('/profile/:id', async (req, res) => {
+    try {
+        if (!isSuperAdmin(req.user)) {
+            return res.status(403).json({ error: 'Only superadmins can edit companies.' });
+        }
+        const id = parseInt(req.params.id, 10);
+        const existing = await prisma.myCompanyProfile.findFirst({ where: { id, deletedAt: null } });
+        if (!existing) return res.status(404).json({ error: 'Company not found.' });
+
+        const profile = await prisma.myCompanyProfile.update({
+            where: { id },
+            data: {
+                companyName: req.body.companyName,
+                address: req.body.address,
+                gstNumber: req.body.gstNumber,
+                panNumber: req.body.panNumber,
+                bankName: req.body.bankName,
+                accountNumber: req.body.accountNumber,
+                ifscCode: req.body.ifscCode,
+                signatoryRole: req.body.signatoryRole || existing.signatoryRole || 'Authorized Signatory'
+            }
+        });
+        res.json(profile);
+    } catch (error) {
+        console.error('Company profile update error:', error);
+        res.status(400).json({ error: 'Failed to update company.' });
+    }
+});
+
+router.delete('/profile/:id', async (req, res) => {
+    try {
+        if (!isSuperAdmin(req.user)) {
+            return res.status(403).json({ error: 'Only superadmins can delete companies.' });
+        }
+        const id = parseInt(req.params.id, 10);
+        const profile = await prisma.myCompanyProfile.findFirst({ where: { id, deletedAt: null } });
+        if (!profile) return res.status(404).json({ error: 'Company not found.' });
+
+        const deletedAt = new Date();
+        await prisma.$transaction(async (tx) => {
+            await tx.myCompanyProfile.updateMany({
+                where: { tenantKey: profile.tenantKey, deletedAt: null },
+                data: { deletedAt }
+            });
+            await tx.userCompanyAccess.updateMany({
+                where: { tenantKey: profile.tenantKey, deletedAt: null },
+                data: { deletedAt }
+            });
+        });
+        res.json({ message: 'Company deleted.', tenantKey: profile.tenantKey });
+    } catch (error) {
+        console.error('Company profile delete error:', error);
+        res.status(400).json({ error: 'Failed to delete company.' });
+    }
+});
+router.delete('/:tenantKey', async (req, res) => {
+    try {
+        if (!isSuperAdmin(req.user)) {
+            return res.status(403).json({ error: 'Only superadmins can delete companies.' });
+        }
+        const tenantKey = normalizeTenantKey(req.params.tenantKey);
+        const deletedAt = new Date();
+        const result = await prisma.$transaction(async (tx) => {
+            const profileUpdate = await tx.myCompanyProfile.updateMany({
+                where: { tenantKey, deletedAt: null },
+                data: { deletedAt }
+            });
+            await tx.userCompanyAccess.updateMany({
+                where: { tenantKey, deletedAt: null },
+                data: { deletedAt }
+            });
+            return profileUpdate;
+        });
+        if (!result.count) return res.status(404).json({ error: 'Company not found.' });
+        res.json({ message: 'Company deleted.', tenantKey });
+    } catch (error) {
+        console.error('Company profile delete error:', error);
+        res.status(400).json({ error: 'Failed to delete company.' });
+    }
+});
 module.exports = router;

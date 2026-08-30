@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 
 const emptyUser = { name: '', email: '', password: '', role: 'USER', status: 'Active', companies: [] };
-const emptyCompany = { tenantKey: '', companyName: '', gstNumber: '', panNumber: '', address: '' };
+const emptyCompany = { id: null, tenantKey: '', companyName: '', gstNumber: '', panNumber: '', address: '' };
 
 function profileScore(profile) {
   const isPlaceholder = String(profile.companyName || '').trim().toLowerCase() === 'default company';
@@ -30,6 +30,7 @@ export default function AdminUsers({ profiles = [], onCompaniesChanged }) {
   const [form, setForm] = useState(emptyUser);
   const [companyForm, setCompanyForm] = useState(emptyCompany);
   const [editingId, setEditingId] = useState(null);
+  const [editingCompanyKey, setEditingCompanyKey] = useState(null);
   const [message, setMessage] = useState('');
 
   const load = async () => {
@@ -54,6 +55,11 @@ export default function AdminUsers({ profiles = [], onCompaniesChanged }) {
     }));
   };
 
+  const refreshCompanies = async () => {
+    await onCompaniesChanged?.();
+    await load();
+  };
+
   const submit = async (event) => {
     event.preventDefault();
     setMessage('');
@@ -74,20 +80,22 @@ export default function AdminUsers({ profiles = [], onCompaniesChanged }) {
     await load();
   };
 
-  const createCompany = async (event) => {
+  const saveCompany = async (event) => {
     event.preventDefault();
     setMessage('');
-    const res = await fetch('/api/my-company', {
-      method: 'POST',
+    const url = editingCompanyKey ? `/api/my-company/profile/${companyForm.id}` : '/api/my-company';
+    const method = editingCompanyKey ? 'PUT' : 'POST';
+    const res = await fetch(url, {
+      method,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(companyForm),
     });
     const data = await res.json();
-    if (!res.ok) return setMessage(data.error || 'Failed to create company.');
+    if (!res.ok) return setMessage(data.error || 'Failed to save company.');
     setCompanyForm(emptyCompany);
-    setMessage(`Company created: ${data.companyName}`);
-    await onCompaniesChanged?.();
-    await load();
+    setEditingCompanyKey(null);
+    setMessage(`Company saved: ${data.companyName}`);
+    await refreshCompanies();
   };
 
   const editUser = (user) => {
@@ -95,11 +103,41 @@ export default function AdminUsers({ profiles = [], onCompaniesChanged }) {
     setForm({ name: user.name, email: user.email, password: '', role: user.role, status: user.status, companies: user.companies || [] });
   };
 
+  const editCompany = (profile) => {
+    setEditingCompanyKey(profile.tenantKey);
+    setCompanyForm({
+      id: profile.id || null,
+      tenantKey: profile.tenantKey || '',
+      companyName: profile.companyName || '',
+      gstNumber: profile.gstNumber || '',
+      panNumber: profile.panNumber || '',
+      address: profile.address || '',
+    });
+  };
+
+  const cancelCompanyEdit = () => {
+    setEditingCompanyKey(null);
+    setCompanyForm(emptyCompany);
+  };
+
   const deleteUser = async (id) => {
     if (!confirm('Delete this user?')) return;
     const res = await fetch(`/api/admin/users/${id}`, { method: 'DELETE' });
     if (!res.ok) return setMessage('Failed to delete user.');
     await load();
+  };
+
+  const deleteCompany = async (tenantKey) => {
+    const profile = companyProfiles.find(item => item.tenantKey === tenantKey);
+    if (!profile) return setMessage('Company not found.');
+    if (!confirm(`Delete company ${tenantKey}? Users assigned to it will lose access.`)) return;
+    const res = await fetch(`/api/my-company/profile/${profile.id}`, { method: 'DELETE' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return setMessage(data.error || 'Failed to delete company.');
+    if (editingCompanyKey === tenantKey) cancelCompanyEdit();
+    setForm(prev => ({ ...prev, companies: prev.companies.filter(key => key !== tenantKey) }));
+    setMessage('Company deleted.');
+    await refreshCompanies();
   };
 
   const runBackup = async () => {
@@ -165,14 +203,17 @@ export default function AdminUsers({ profiles = [], onCompaniesChanged }) {
       </section>
 
       <section className="admin-grid">
-        <form className="admin-panel" onSubmit={createCompany}>
-          <h3>Create Company</h3>
-          <input placeholder="Company Key" value={companyForm.tenantKey} onChange={e => setCompanyForm({ ...companyForm, tenantKey: e.target.value })} required />
+        <form className="admin-panel" onSubmit={saveCompany}>
+          <h3>{editingCompanyKey ? 'Edit Company' : 'Create Company'}</h3>
+          <input placeholder="Company Key" value={companyForm.tenantKey} onChange={e => setCompanyForm({ ...companyForm, tenantKey: e.target.value })} required disabled={!!editingCompanyKey} />
           <input placeholder="Company Name" value={companyForm.companyName} onChange={e => setCompanyForm({ ...companyForm, companyName: e.target.value })} required />
           <input placeholder="GST Number" value={companyForm.gstNumber} onChange={e => setCompanyForm({ ...companyForm, gstNumber: e.target.value })} />
           <input placeholder="PAN Number" value={companyForm.panNumber} onChange={e => setCompanyForm({ ...companyForm, panNumber: e.target.value })} />
           <input placeholder="Address" value={companyForm.address} onChange={e => setCompanyForm({ ...companyForm, address: e.target.value })} />
-          <button className="primary-btn" type="submit">Create Company</button>
+          <div className="form-actions">
+            <button className="primary-btn" type="submit">Save Company</button>
+            {editingCompanyKey && <button type="button" onClick={cancelCompanyEdit}>Cancel</button>}
+          </div>
         </form>
 
         <div className="admin-panel">
@@ -185,6 +226,8 @@ export default function AdminUsers({ profiles = [], onCompaniesChanged }) {
                   <span>{profile.tenantKey}</span>
                   <small>{profile.gstNumber || profile.panNumber || 'No tax details saved'}</small>
                 </div>
+                <button onClick={() => editCompany(profile)}>Edit</button>
+                <button className="danger-text" onClick={() => deleteCompany(profile.tenantKey)}>Delete</button>
               </div>
             ))}
           </div>
