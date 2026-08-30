@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 
 const FormGroup = ({ label, name, value, onChange, required=false }) => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
@@ -76,7 +76,8 @@ export default function MyCompanyProfile({ isSuperAdmin = false }) {
 
                 <h3 style={{ fontSize: '14px', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px', marginBottom: '15px' }}>1. Business Details</h3>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '15px', marginBottom: '25px' }}>
-                    {isSuperAdmin && <FormGroup label="Company Key" name="tenantKey" value={formData.tenantKey} onChange={handleChange} />}`r`n                    <FormGroup label="Logistics Company Name" name="companyName" value={formData.companyName} onChange={handleChange} required />
+                    {isSuperAdmin && <FormGroup label="Company Key" name="tenantKey" value={formData.tenantKey} onChange={handleChange} />}
+                    <FormGroup label="Logistics Company Name" name="companyName" value={formData.companyName} onChange={handleChange} required />
                     <FormGroup label="GSTIN Number" name="gstNumber" value={formData.gstNumber} onChange={handleChange} />
                     <FormGroup label="PAN Number" name="panNumber" value={formData.panNumber} onChange={handleChange} />
                     <div style={{ gridColumn: '1 / -1' }}>
