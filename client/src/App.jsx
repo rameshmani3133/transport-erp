@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { Routes, Route, NavLink, useLocation } from 'react-router-dom';
+﻿import React, { useEffect, useState } from 'react';
+import { Routes, Route, NavLink, Navigate } from 'react-router-dom';
 import { clearAuthSession, getAuthUser, getTenantKey, setAuthSession, setTenantKey } from './tenant';
 
 import TripManagement from './pages/TripManagement';
@@ -15,10 +15,11 @@ import MyCompanyProfile from './pages/MyCompanyProfile';
 import DieselManagement from './pages/DieselManagement';
 import VendorSettlement from './pages/VendorSettlement';
 import Reports from './pages/Reports';
-import InvoicePrint from './pages/InvoicePrint';
 import DriverSettlement from './pages/DriverSettlement';
-import BillingMaster from './pages/BillingMaster';
+import PaymentVouchers from './pages/PaymentVouchers';
 import AdminUsers from './pages/AdminUsers';
+import LoanTracking from './pages/LoanTracking';
+import Reminders from './pages/Reminders';
 
 function profileScore(profile) {
   const isPlaceholder = String(profile.companyName || '').trim().toLowerCase() === 'default company';
@@ -85,12 +86,10 @@ function LoginScreen({ onLogin }) {
 }
 
 export default function App() {
-  const location = useLocation();
   const [user, setUser] = useState(getAuthUser());
   const [tenant, setTenant] = useState(getTenantKey());
   const [profiles, setProfiles] = useState([]);
   const isSuperAdmin = user?.role === 'SUPERADMIN';
-  const isPrintView = location.pathname.includes('/print-invoice');
 
   useEffect(() => {
     if (!user) return;
@@ -132,72 +131,74 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      {!isPrintView && (
-        <nav className="sidebar no-print">
-          <div className="sidebar-header">Logistics ERP</div>
-          <div className="user-panel">
-            <strong>{user.name}</strong>
-            <span>{user.role}</span>
-            <button onClick={logout}>Logout</button>
-          </div>
-          <div className="tenant-panel">
-            <label htmlFor="tenantSelect">Company</label>
-            <select id="tenantSelect" value={tenant} onChange={(e) => handleTenantChange(e.target.value)}>
-              {profiles.map(profile => (
-                <option key={profile.tenantKey} value={profile.tenantKey}>
-                  {companyOptionLabel(profile)}
-                </option>
-              ))}
-            </select>
-          </div>
+      <nav className="sidebar no-print">
+        <div className="sidebar-header">Logistics ERP</div>
+        <div className="user-panel">
+          <strong>{user.name}</strong>
+          <span>{user.role}</span>
+          <button onClick={logout}>Logout</button>
+        </div>
+        <div className="tenant-panel">
+          <label htmlFor="tenantSelect">Company</label>
+          <select id="tenantSelect" value={tenant} onChange={(e) => handleTenantChange(e.target.value)}>
+            {profiles.map(profile => (
+              <option key={profile.tenantKey} value={profile.tenantKey}>
+                {companyOptionLabel(profile)}
+              </option>
+            ))}
+          </select>
+        </div>
 
+        <div className="nav-group">
+          <div className="nav-group-title">Executive</div>
+          <NavLink to="/" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Reports Dashboard</NavLink>
+          <NavLink to="/reminders" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Reminders</NavLink>
+        </div>
+        <div className="nav-group">
+          <div className="nav-group-title">Operations</div>
+          <NavLink to="/trips" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Trip Dispatch</NavLink>
+          <NavLink to="/diesel" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Diesel Tracking</NavLink>
+        </div>
+        <div className="nav-group">
+          <div className="nav-group-title">Finance & Billing</div>
+          <NavLink to="/billing" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Client Invoicing</NavLink>
+          <NavLink to="/settlements" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Vendor Settlements</NavLink>
+          <NavLink to="/driver-settlements" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Driver Trip Sheets</NavLink>
+          <NavLink to="/payments" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Payment Vouchers</NavLink>
+          <NavLink to="/ledger" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Ledger Dashboard</NavLink>
+          <NavLink to="/loans" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Loan Tracking</NavLink>
+        </div>
+        <div className="nav-group">
+          <div className="nav-group-title">Master Data</div>
+          <NavLink to="/my-company" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Company Settings</NavLink>
+          <NavLink to="/clients" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Client Companies</NavLink>
+          <NavLink to="/accounts" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Chart of Accounts</NavLink>
+          <NavLink to="/vehicles" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Vehicles</NavLink>
+          <NavLink to="/drivers" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Drivers</NavLink>
+          <NavLink to="/locations" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Billing Locations</NavLink>
+          <NavLink to="/routes" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Routes & Rates</NavLink>
+        </div>
+        {isSuperAdmin && (
           <div className="nav-group">
-            <div className="nav-group-title">Executive</div>
-            <NavLink to="/" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Reports Dashboard</NavLink>
+            <div className="nav-group-title">Admin</div>
+            <NavLink to="/admin/users" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Users & Backups</NavLink>
           </div>
-          <div className="nav-group">
-            <div className="nav-group-title">Operations</div>
-            <NavLink to="/trips" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Trip Dispatch</NavLink>
-            <NavLink to="/diesel" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Diesel Tracking</NavLink>
-          </div>
-          <div className="nav-group">
-            <div className="nav-group-title">Finance & Billing</div>
-            <NavLink to="/billing" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Client Invoicing</NavLink>
-            <NavLink to="/settlements" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Vendor Settlements</NavLink>
-            <NavLink to="/driver-settlements" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Driver Trip Sheets</NavLink>
-            <NavLink to="/ledger" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Ledger Dashboard</NavLink>
-          </div>
-          <div className="nav-group">
-            <div className="nav-group-title">Master Data</div>
-            <NavLink to="/my-company" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Company Settings</NavLink>
-            <NavLink to="/billing-master" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Billing Master</NavLink>
-            <NavLink to="/clients" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Client Companies</NavLink>
-            <NavLink to="/accounts" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Chart of Accounts</NavLink>
-            <NavLink to="/vehicles" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Vehicles</NavLink>
-            <NavLink to="/drivers" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Drivers</NavLink>
-            <NavLink to="/locations" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Billing Locations</NavLink>
-            <NavLink to="/routes" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Routes & Rates</NavLink>
-          </div>
-          {isSuperAdmin && (
-            <div className="nav-group">
-              <div className="nav-group-title">Admin</div>
-              <NavLink to="/admin/users" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Users & Backups</NavLink>
-            </div>
-          )}
-        </nav>
-      )}
+        )}
+      </nav>
 
-      <main className={isPrintView ? 'main-content print-mode' : 'main-content'}>
+      <main className="main-content">
         <Routes>
           <Route path="/" element={<Reports />} />
           <Route path="/trips" element={<TripManagement />} />
           <Route path="/diesel" element={<DieselManagement />} />
           <Route path="/billing" element={<Billing />} />
           <Route path="/settlements" element={<VendorSettlement />} />
+          <Route path="/payments" element={<PaymentVouchers />} />
           <Route path="/ledger" element={<LedgerDashboard />} />
-          <Route path="/print-invoice/:id" element={<InvoicePrint />} />
+          <Route path="/loans" element={<LoanTracking />} />
+          <Route path="/reminders" element={<Reminders />} />
+          <Route path="/print-invoice/:id" element={<Navigate to="/billing" replace />} />
           <Route path="/my-company" element={<MyCompanyProfile isSuperAdmin={isSuperAdmin} />} />
-          <Route path="/billing-master" element={<BillingMaster />} />
           <Route path="/clients" element={<ClientMaster />} />
           <Route path="/accounts" element={<AccountMaster />} />
           <Route path="/vehicles" element={<VehicleMaster />} />
@@ -211,3 +212,4 @@ export default function App() {
     </div>
   );
 }
+

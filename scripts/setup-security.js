@@ -1,4 +1,4 @@
-const { PrismaClient } = require('@prisma/client');
+﻿const { PrismaClient } = require('@prisma/client');
 const { hashPassword } = require('../lib/security');
 
 const prisma = new PrismaClient();
@@ -6,7 +6,7 @@ const prisma = new PrismaClient();
 const softDeleteTables = [
   'Vehicle', 'Driver', 'ClientCompany', 'BillingLocation', 'RouteMaster', 'Trip',
   'Invoice', 'InvoicePayment', 'Account', 'LedgerEntry', 'Diesel', 'VendorSettlement',
-  'DriverSettlement', 'MyCompanyProfile', 'BillingMaster'
+  'DriverSettlement', 'MyCompanyProfile'
 ];
 
 async function tableExists(tableName) {
@@ -82,22 +82,6 @@ async function createTables() {
   `);
 
   await prisma.$executeRawUnsafe(`
-    CREATE TABLE IF NOT EXISTS \`BillingMaster\` (
-      \`id\` INT NOT NULL AUTO_INCREMENT,
-      \`tenantKey\` VARCHAR(191) NOT NULL DEFAULT 'default',
-      \`deletedAt\` DATETIME(3) NULL,
-      \`companyName\` VARCHAR(191) NOT NULL,
-      \`address\` VARCHAR(191) NULL,
-      \`gstin\` VARCHAR(191) NULL,
-      \`pan\` VARCHAR(191) NULL,
-      \`bankName\` VARCHAR(191) NULL,
-      \`accountNumber\` VARCHAR(191) NULL,
-      \`ifscCode\` VARCHAR(191) NULL,
-      PRIMARY KEY (\`id\`),
-      UNIQUE KEY \`BillingMaster_tenantKey_companyName_key\` (\`tenantKey\`, \`companyName\`)
-    )
-  `);
-  await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS \`BackupRun\` (
       \`id\` INT NOT NULL AUTO_INCREMENT,
       \`status\` VARCHAR(32) NOT NULL,
@@ -139,6 +123,10 @@ async function main() {
   for (const table of softDeleteTables) {
     await addColumn(table, '`deletedAt` DATETIME(3) NULL');
   }
+  await addColumn('Trip', '`clientAdvanceAccountId` INT NULL');
+  await addColumn('Trip', '`clientAdvanceClientAccountId` INT NULL');
+  await addColumn('Trip', '`clientAdvanceDate` DATETIME(3) NULL');
+  await addColumn('Trip', '`clientAdvanceAmount` DOUBLE NOT NULL DEFAULT 0');
   await seedSuperAdmin();
 }
 
@@ -148,3 +136,4 @@ main().catch(error => {
 }).finally(async () => {
   await prisma.$disconnect();
 });
+

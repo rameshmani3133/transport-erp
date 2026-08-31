@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import DataTable from '../components/DataTable';
 
 // Reusable Form Group Component for clean UI
@@ -20,11 +20,13 @@ export default function VehicleMaster() {
         vendorAccountId: '', status: 'Active',
         
         // Standard Expiries
-        regDate: '', fcExpiry: '', permit1YrExpiry: '', permit5YrExpiry: '', qTaxExpiry: '', pucExpiry: '', fitmentDetails: '',
+        regDate: '', fcExpiry: '', permit1YrExpiry: '', permit5YrExpiry: '', qTaxExpiry: '', pucExpiry: '',
+        insuranceExpiry: '', cllExpiry: '', pliExpiry: '', explosiveExpiry: '', fitmentDetails: '',
         
         // LPG Tanker Specifics
         pesoExpiry: '', rule18Expiry: '', rule19Expiry: '', rule43Expiry: '',
-        sv1Num: '', sv2Num: '', sv3Num: '', iv1Num: '', iv2Num: '', iv3Num: ''
+        sv1Num: '', sv2Num: '', sv3Num: '', iv1Num: '', iv2Num: '', iv3Num: '',
+        sv1Expiry: '', sv2Expiry: '', sv3Expiry: '', iv1Expiry: '', iv2Expiry: '', iv3Expiry: ''
     };
     
     const [formData, setFormData] = useState(initialState);
@@ -58,6 +60,10 @@ export default function VehicleMaster() {
             permit5YrExpiry: formatDate(v.permit5YrExpiry),
             qTaxExpiry: formatDate(v.qTaxExpiry),
             pucExpiry: formatDate(v.pucExpiry),
+            insuranceExpiry: formatDate(v.insuranceExpiry),
+            cllExpiry: formatDate(v.cllExpiry),
+            pliExpiry: formatDate(v.pliExpiry),
+            explosiveExpiry: formatDate(v.explosiveExpiry),
             
             pesoExpiry: formatDate(v.pesoExpiry),
             rule18Expiry: formatDate(v.rule18Expiry),
@@ -65,7 +71,13 @@ export default function VehicleMaster() {
             rule43Expiry: formatDate(v.rule43Expiry),
             
             sv1Num: v.sv1Num || '', sv2Num: v.sv2Num || '', sv3Num: v.sv3Num || '',
-            iv1Num: v.iv1Num || '', iv2Num: v.iv2Num || '', iv3Num: v.iv3Num || ''
+            iv1Num: v.iv1Num || '', iv2Num: v.iv2Num || '', iv3Num: v.iv3Num || '',
+            sv1Expiry: formatDate(v.sv1Expiry),
+            sv2Expiry: formatDate(v.sv2Expiry),
+            sv3Expiry: formatDate(v.sv3Expiry),
+            iv1Expiry: formatDate(v.iv1Expiry),
+            iv2Expiry: formatDate(v.iv2Expiry),
+            iv3Expiry: formatDate(v.iv3Expiry)
         });
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
@@ -79,6 +91,7 @@ export default function VehicleMaster() {
                 // If not LPG, wipe out LPG specific data so it doesn't clutter DB
                 payload.pesoExpiry = null; payload.rule18Expiry = null; payload.rule19Expiry = null; payload.rule43Expiry = null;
                 payload.sv1Num = ''; payload.sv2Num = ''; payload.sv3Num = ''; payload.iv1Num = ''; payload.iv2Num = ''; payload.iv3Num = '';
+                payload.sv1Expiry = null; payload.sv2Expiry = null; payload.sv3Expiry = null; payload.iv1Expiry = null; payload.iv2Expiry = null; payload.iv3Expiry = null;
             }
 
             const method = editId ? 'PUT' : 'POST';
@@ -162,9 +175,9 @@ export default function VehicleMaster() {
 
                     {formData.ownershipType === 'Market' && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                            <label style={{ fontSize: '11px', fontWeight: '600', color: '#4f46e5' }}>Link to Vendor Ledger Account</label>
+                            <label style={{ fontSize: '11px', fontWeight: '600', color: '#4f46e5' }}>Vendor Ledger Account</label>
                             <select name="vendorAccountId" value={formData.vendorAccountId} onChange={handleChange} style={{ padding: '8px', borderRadius: '4px', border: '1px solid #c7d2fe', backgroundColor: '#eef2ff', fontSize:'13px' }}>
-                                <option value="">-- No Ledger Link --</option>
+                                <option value="">-- Auto-create from owner if blank --</option>
                                 {accounts.filter(a => a.accountGroup?.toLowerCase().includes('creditor')).map(a => 
                                     <option key={a.id} value={a.id}>{a.accountName}</option>
                                 )}
@@ -182,12 +195,16 @@ export default function VehicleMaster() {
                     <FormGroup label="Permit (5 Yr) Expiry" name="permit5YrExpiry" type="date" value={formData.permit5YrExpiry} onChange={handleChange} />
                     <FormGroup label="Quarterly Tax Expiry" name="qTaxExpiry" type="date" value={formData.qTaxExpiry} onChange={handleChange} />
                     <FormGroup label="PUC Expiry" name="pucExpiry" type="date" value={formData.pucExpiry} onChange={handleChange} />
+                    <FormGroup label="Insurance Expiry" name="insuranceExpiry" type="date" value={formData.insuranceExpiry} onChange={handleChange} />
+                    <FormGroup label="CLL Expiry" name="cllExpiry" type="date" value={formData.cllExpiry} onChange={handleChange} />
+                    <FormGroup label="PLI Expiry" name="pliExpiry" type="date" value={formData.pliExpiry} onChange={handleChange} />
+                    <FormGroup label="Explosive License Expiry" name="explosiveExpiry" type="date" value={formData.explosiveExpiry} onChange={handleChange} />
                 </div>
 
                 {/* 3. CONDITIONAL LPG TANKER SECTION */}
                 {formData.type === 'LPG Tanker' && (
                     <>
-                        <h3 style={{ fontSize: '14px', borderBottom: '1px solid #fed7aa', paddingBottom: '10px', marginBottom: '15px', color: '#c2410c' }}>🔥 3. LPG Tanker Specifics & Valve Tests</h3>
+                        <h3 style={{ fontSize: '14px', borderBottom: '1px solid #fed7aa', paddingBottom: '10px', marginBottom: '15px', color: '#c2410c' }}>ðŸ”¥ 3. LPG Tanker Specifics & Valve Tests</h3>
                         
                         {/* Expiry Dates */}
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px', marginBottom: '15px', backgroundColor: '#fff7ed', padding: '15px', borderRadius: '8px', border: '1px solid #fed7aa' }}>
@@ -200,12 +217,18 @@ export default function VehicleMaster() {
                         {/* Valve Numbers */}
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px', marginBottom: '25px', backgroundColor: '#fff7ed', padding: '15px', borderRadius: '8px', border: '1px solid #fed7aa' }}>
                             <FormGroup label="Safety Valve 1 No." name="sv1Num" value={formData.sv1Num} onChange={handleChange} />
+                            <FormGroup label="Safety Valve 1 Expiry" name="sv1Expiry" type="date" value={formData.sv1Expiry} onChange={handleChange} />
                             <FormGroup label="Safety Valve 2 No." name="sv2Num" value={formData.sv2Num} onChange={handleChange} />
+                            <FormGroup label="Safety Valve 2 Expiry" name="sv2Expiry" type="date" value={formData.sv2Expiry} onChange={handleChange} />
                             <FormGroup label="Safety Valve 3 No." name="sv3Num" value={formData.sv3Num} onChange={handleChange} />
+                            <FormGroup label="Safety Valve 3 Expiry" name="sv3Expiry" type="date" value={formData.sv3Expiry} onChange={handleChange} />
                             
                             <FormGroup label="Internal Valve 1 No." name="iv1Num" value={formData.iv1Num} onChange={handleChange} />
+                            <FormGroup label="Internal Valve 1 Expiry" name="iv1Expiry" type="date" value={formData.iv1Expiry} onChange={handleChange} />
                             <FormGroup label="Internal Valve 2 No." name="iv2Num" value={formData.iv2Num} onChange={handleChange} />
+                            <FormGroup label="Internal Valve 2 Expiry" name="iv2Expiry" type="date" value={formData.iv2Expiry} onChange={handleChange} />
                             <FormGroup label="Internal Valve 3 No." name="iv3Num" value={formData.iv3Num} onChange={handleChange} />
+                            <FormGroup label="Internal Valve 3 Expiry" name="iv3Expiry" type="date" value={formData.iv3Expiry} onChange={handleChange} />
                         </div>
                     </>
                 )}

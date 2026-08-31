@@ -1,15 +1,22 @@
 ﻿const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 const { withTenant } = require('./tenant');
+const { ensureStandardAccountingAccounts } = require('../lib/accountingAccounts');
+const { toNumber, toInt, toRequiredInt, toDate, text } = require('../lib/coerce');
 const router = express.Router();
 const prisma = new PrismaClient();
+
+function normalizeVoucherId(value) {
+    return String(value || '').trim();
+}
 
 // 1. GET ALL ACCOUNTS & CALCULATE LIVE BALANCES
 router.get('/accounts', async (req, res) => {
     try {
+        await ensureStandardAccountingAccounts(prisma, req);
         const accounts = await prisma.account.findMany({
             where: withTenant(req),
-            include: { entries: true },
+            include: { entries: { where: { deletedAt: null } } },
             orderBy: { accountName: 'asc' }
         });
         
@@ -22,7 +29,6 @@ router.get('/accounts', async (req, res) => {
                     currentBalance += (e.type === 'Cr' ? e.amount : -e.amount);
                 }
             });
-            // Remove full entries array from payload to keep it lightweight
             const { entries, ...accountData } = acc;
             return { ...accountData, currentBalance };
         });
@@ -38,9 +44,9 @@ router.get('/accounts', async (req, res) => {
 router.get('/transactions/:accountId', async (req, res) => {
     try {
         const txns = await prisma.ledgerEntry.findMany({
-            where: withTenant(req, { accountId: parseInt(req.params.accountId) }),
-            include: { trip: true, invoice: true, settlement: true, diesel: true },
-            orderBy: { date: 'desc' } // Sort newest first
+            where: withTenant(req, { accountId: toRequiredInt(req.params.accountId, 'Account') }),
+            include: { trip: true, invoice: true, settlement: true, diesel: true, driverSettlement: true },
+            orderBy: { date: 'desc' }
         });
         res.json(txns);
     } catch (error) {
@@ -49,102 +55,94 @@ router.get('/transactions/:accountId', async (req, res) => {
     }
 });
 
-// 3. POST MANUAL DIRECT LEDGER ENTRY
+// 3. POST MANUAL DOUBLE-ENTRY VOUCHER
 router.post('/manual', async (req, res) => {
     try {
-        const entry = await prisma.ledgerEntry.create({
-            data: {
-                date: req.body.date ? new Date(req.body.date) : new Date(),
-                tenantKey: req.tenantKey,
-                accountId: parseInt(req.body.accountId),
-                type: req.body.type,
-                amount: parseFloat(req.body.amount || 0),
-                narration: req.body.narration || 'Manual Voucher Entry'
-            }
-        });
-        res.json(entry);
-    } catch (error) {
-        res.status(400).json({ error: "Failed to post entry." });
-    }
-});
-
-// 4. UPDATE MANUAL ENTRY
-router.put('/manual/:id', async (req, res) => {
-    try {
-        // Security Check: Ensure it's not tied to an automated module
-        const existing = await prisma.ledgerEntry.findFirst({ where: withTenant(req, { id: parseInt(req.params.id) }) });
-        if (!existing) return res.status(404).json({ error: "Entry not found." });
-        if (existing.tripId || existing.invoiceId || existing.settlementId || existing.dieselId) {
-            return res.status(403).json({ error: "Cannot edit an automated system entry." });
+        const debitAccountId = toInt(req.body.debitAccountId || req.body.accountId);
+        const creditAccountId = toInt(req.body.creditAccountId);
+        const amount = toNumber(req.body.amount);
+        if (!Number.isInteger(debitAccountId) || !Number.isInteger(creditAccountId) || debitAccountId === creditAccountId) {
+            return res.status(400).json({ error: 'Select different debit and credit accounts.' });
         }
+        if (amount <= 0) return res.status(400).json({ error: 'Amount must be greater than zero.' });
 
-        const entry = await prisma.ledgerEntry.update({
-            where: withTenant(req, { id: parseInt(req.params.id) }),
-            data: {
-                date: req.body.date ? new Date(req.body.date) : new Date(),
-                accountId: parseInt(req.body.accountId),
-                type: req.body.type,
-                amount: parseFloat(req.body.amount || 0),
-                narration: req.body.narration
-            }
-        });
-        res.json(entry);
+        const voucherId = `MV-${Date.now()}`;
+        const date = toDate(req.body.date, new Date());
+        const narration = text(req.body.narration, 'Manual Voucher Entry') || 'Manual Voucher Entry';
+        const entries = await prisma.$transaction(async (tx) => tx.ledgerEntry.createMany({
+            data: [
+                { date, tenantKey: req.tenantKey, accountId: debitAccountId, type: 'Dr', amount, narration: `${narration} [${voucherId}]` },
+                { date, tenantKey: req.tenantKey, accountId: creditAccountId, type: 'Cr', amount, narration: `${narration} [${voucherId}]` }
+            ]
+        }));
+        res.json({ voucherId, entries });
     } catch (error) {
-        res.status(400).json({ error: "Failed to update entry." });
+        console.error('Manual Voucher Error:', error);
+        res.status(400).json({ error: "Failed to post voucher." });
     }
 });
 
-// 5. DELETE MANUAL ENTRY
+// 4. UPDATE MANUAL VOUCHER SIDE BY ENTRY ID
+router.put('/manual/:id', async (req, res) => {
+    return res.status(403).json({ error: 'Manual vouchers cannot be edited one side at a time. Delete and repost the voucher.' });
+});
+
+// 5. DELETE MANUAL VOUCHER SIDE BY ENTRY ID
 router.delete('/manual/:id', async (req, res) => {
     try {
-        const existing = await prisma.ledgerEntry.findFirst({ where: withTenant(req, { id: parseInt(req.params.id) }) });
+        const existing = await prisma.ledgerEntry.findFirst({ where: withTenant(req, { id: toRequiredInt(req.params.id, 'Ledger entry') }) });
         if (!existing) return res.status(404).json({ error: "Entry not found." });
-        if (existing.tripId || existing.invoiceId || existing.settlementId || existing.dieselId) {
+        if (existing.tripId || existing.invoiceId || existing.settlementId || existing.dieselId || existing.driverSettlementId) {
             return res.status(403).json({ error: "Cannot delete an automated system entry." });
         }
-        await prisma.ledgerEntry.updateMany({ where: withTenant(req, { id: parseInt(req.params.id) }), data: { deletedAt: new Date() } });
-        res.json({ message: "Entry deleted." });
+        const match = normalizeVoucherId(existing.narration).match(/\[(MV-\d+)\]$/);
+        if (match) {
+            await prisma.ledgerEntry.updateMany({ where: withTenant(req, { narration: { contains: `[${match[1]}]` } }), data: { deletedAt: new Date() } });
+        } else {
+            await prisma.ledgerEntry.updateMany({ where: withTenant(req, { id: existing.id }), data: { deletedAt: new Date() } });
+        }
+        res.json({ message: "Voucher deleted." });
     } catch (error) {
         res.status(400).json({ error: "Failed to delete entry." });
     }
 });
 
-// ==========================================
-// ACCOUNT MASTER CRUD (CREATE, UPDATE, DELETE)
-// ==========================================
-
-// CREATE NEW ACCOUNT
+// ACCOUNT MASTER CRUD
 router.post('/account', async (req, res) => {
     try {
+        if (!text(req.body.accountName)) throw new Error('Account name is required.');
+        if (!text(req.body.accountType)) throw new Error('Account type is required.');
+        if (!text(req.body.accountGroup)) throw new Error('Account group is required.');
         const account = await prisma.account.create({
             data: {
-                accountName: req.body.accountName,
+                accountName: text(req.body.accountName),
                 tenantKey: req.tenantKey,
-                accountType: req.body.accountType,
-                accountGroup: req.body.accountGroup,
-                openingBalance: parseFloat(req.body.openingBalance || 0),
+                accountType: text(req.body.accountType),
+                accountGroup: text(req.body.accountGroup),
+                openingBalance: toNumber(req.body.openingBalance),
                 balanceType: req.body.balanceType || 'Dr'
             }
         });
         res.json(account);
     } catch (error) {
         console.error("Account Creation Error:", error);
-        // P2002 is Prisma's error code for "Unique constraint failed"
         if (error.code === 'P2002') return res.status(400).json({ error: "An account with this exact name already exists." });
         res.status(400).json({ error: "Failed to create account." });
     }
 });
 
-// UPDATE EXISTING ACCOUNT
 router.put('/account/:id', async (req, res) => {
     try {
+        if (!text(req.body.accountName)) throw new Error('Account name is required.');
+        if (!text(req.body.accountType)) throw new Error('Account type is required.');
+        if (!text(req.body.accountGroup)) throw new Error('Account group is required.');
         const account = await prisma.account.update({
-            where: withTenant(req, { id: parseInt(req.params.id) }),
+            where: withTenant(req, { id: toRequiredInt(req.params.id, 'Account') }),
             data: {
-                accountName: req.body.accountName,
-                accountType: req.body.accountType,
-                accountGroup: req.body.accountGroup,
-                openingBalance: parseFloat(req.body.openingBalance || 0),
+                accountName: text(req.body.accountName),
+                accountType: text(req.body.accountType),
+                accountGroup: text(req.body.accountGroup),
+                openingBalance: toNumber(req.body.openingBalance),
                 balanceType: req.body.balanceType || 'Dr'
             }
         });
@@ -156,14 +154,12 @@ router.put('/account/:id', async (req, res) => {
     }
 });
 
-// DELETE ACCOUNT
 router.delete('/account/:id', async (req, res) => {
     try {
-        await prisma.account.updateMany({ where: withTenant(req, { id: parseInt(req.params.id) }), data: { deletedAt: new Date() } });
+        await prisma.account.updateMany({ where: withTenant(req, { id: toRequiredInt(req.params.id, 'Account') }), data: { deletedAt: new Date() } });
         res.json({ message: "Account deleted successfully." });
     } catch (error) {
         console.error("Account Delete Error:", error);
-        // If an account is used in a Trip, Invoice, or Ledger Entry, Prisma blocks deletion to protect your data.
         res.status(400).json({ error: "Cannot delete this account because it has active transactions tied to it." });
     }
 });

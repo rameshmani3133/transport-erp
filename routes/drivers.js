@@ -1,6 +1,8 @@
 ﻿const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 const { withTenant } = require('./tenant');
+const { ensureDriverAdvanceAccount } = require('../lib/accountingAccounts');
+const { toRequiredInt, toDate, toRequiredDate, text } = require('../lib/coerce');
 const router = express.Router();
 const prisma = new PrismaClient();
 
@@ -18,44 +20,33 @@ router.get('/', async (req, res) => {
 router.post('/', async (req, res) => {
     const d = req.body;
     try {
-        // Use a transaction to ensure both records are created together
         const result = await prisma.$transaction(async (tx) => {
-            // 1. Create the Driver
+            if (!text(d.name)) throw new Error('Driver name is required.');
+            if (!text(d.licenseNo)) throw new Error('License number is required.');
+            if (!text(d.aadhaarNumber)) throw new Error('Aadhaar number is required.');
             const newDriver = await tx.driver.create({
                 data: {
-                    name: d.name,
+                    name: text(d.name),
                     tenantKey: req.tenantKey,
-                    licenseNo: d.licenseNo,
-                    licenseExpiry: new Date(d.licenseExpiry),
+                    licenseNo: text(d.licenseNo),
+                    licenseExpiry: toRequiredDate(d.licenseExpiry, 'License expiry'),
                     hazmatLicense: d.hazmatLicense || false,
-                    hazmatExpiry: d.hazmatExpiry ? new Date(d.hazmatExpiry) : null,
-                    address: d.address,
-                    phone: d.phone,
-                    aadhaarNumber: d.aadhaarNumber,
+                    hazmatExpiry: toDate(d.hazmatExpiry),
+                    address: text(d.address, null),
+                    phone: text(d.phone),
+                    aadhaarNumber: text(d.aadhaarNumber),
                     status: d.status || 'Active'
                 }
             });
 
-            // 2. Auto-Create the Ledger Account for Driver Advances
-            await tx.account.create({
-                data: {
-                    accountName: `${newDriver.name} - Driver Advance`,
-                    tenantKey: req.tenantKey,
-                    accountType: 'Asset',
-                    accountGroup: 'Loans & Advances (Asset)', 
-                    driverId: newDriver.id, // Links directly to the driver
-                    openingBalance: 0,
-                    balanceType: 'Dr' // Advances are always debit balances
-                }
-            });
-
+            await ensureDriverAdvanceAccount(tx, req, newDriver);
             return newDriver;
         });
 
         res.json(result);
     } catch (error) {
         console.error("Driver Creation Error:", error);
-        if (error.code === 'P2002') return res.status(400).json({ error: "A driver with this License or ID already exists." });
+        if (error.code === 'P2002') return res.status(400).json({ error: "A driver with this License, Aadhaar, or linked ledger already exists." });
         res.status(400).json({ error: "Failed to create driver." });
     }
 });
@@ -63,56 +54,45 @@ router.post('/', async (req, res) => {
 // UPDATE DRIVER & SYNC LEDGER NAME
 router.put('/:id', async (req, res) => {
     const d = req.body;
-    const driverId = parseInt(req.params.id);
     
     try {
+        const driverId = toRequiredInt(req.params.id, 'Driver');
         const result = await prisma.$transaction(async (tx) => {
-            // 1. Update the Driver
             const updatedDriver = await tx.driver.update({
                 where: withTenant(req, { id: driverId }),
                 data: {
-                    name: d.name,
-                    licenseNo: d.licenseNo,
-                    licenseExpiry: new Date(d.licenseExpiry),
+                    name: text(d.name),
+                    licenseNo: text(d.licenseNo),
+                    licenseExpiry: toRequiredDate(d.licenseExpiry, 'License expiry'),
                     hazmatLicense: d.hazmatLicense,
-                    hazmatExpiry: d.hazmatExpiry ? new Date(d.hazmatExpiry) : null,
-                    address: d.address,
-                    phone: d.phone,
-                    aadhaarNumber: d.aadhaarNumber,
+                    hazmatExpiry: toDate(d.hazmatExpiry),
+                    address: text(d.address, null),
+                    phone: text(d.phone),
+                    aadhaarNumber: text(d.aadhaarNumber),
                     status: d.status
                 }
             });
 
-            // 2. If the driver's name changed, update their Ledger Account name to match
-            const linkedAccount = await tx.account.findFirst({ where: withTenant(req, { driverId: driverId }) });
-            if (linkedAccount) {
-                await tx.account.update({
-                    where: { id: linkedAccount.id },
-                    data: { accountName: `${updatedDriver.name} - Driver Advance` }
-                });
-            }
-
+            await ensureDriverAdvanceAccount(tx, req, updatedDriver);
             return updatedDriver;
         });
         
         res.json(result);
     } catch (error) {
-        if (error.code === 'P2002') return res.status(400).json({ error: "License or ID already in use." });
+        if (error.code === 'P2002') return res.status(400).json({ error: "License, Aadhaar, or linked ledger already in use." });
         res.status(400).json({ error: "Failed to update driver." });
     }
 });
 
 // DELETE DRIVER
 router.delete('/:id', async (req, res) => {
-    const driverId = parseInt(req.params.id);
     try {
+        const driverId = toRequiredInt(req.params.id, 'Driver');
         await prisma.$transaction(async (tx) => {
-            // Must delete the linked ledger account first to satisfy database constraints
             const linkedAccount = await tx.account.findFirst({ where: withTenant(req, { driverId: driverId }) });
             if (linkedAccount) {
                 await tx.account.update({ where: { id: linkedAccount.id }, data: { deletedAt: new Date() } });
             }
-            // Now safe to delete the driver
             await tx.driver.updateMany({ where: withTenant(req, { id: driverId }), data: { deletedAt: new Date() } });
         });
         res.json({ message: "Driver and linked account deleted." });
@@ -123,4 +103,3 @@ router.delete('/:id', async (req, res) => {
 });
 
 module.exports = router;
-

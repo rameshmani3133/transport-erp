@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import DataTable from '../components/DataTable';
 
+const num = (value) => Number(value || 0);
+const money = (value) => `Rs.${num(value).toFixed(2)}`;
+const dateText = (value) => value ? new Date(value).toLocaleDateString() : '-';
+
 const FormGroup = ({ label, name, type="text", value, onChange, required=false, disabled=false }) => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
         <label style={{ fontSize: '11px', fontWeight: '600', color: '#64748b' }}>{label}</label>
@@ -88,12 +92,12 @@ export default function DieselManagement() {
     };
 
     const columns = [
-        { header: 'Date', key: 'date', render: (d) => new Date(d.date).toLocaleDateString() },
+        { header: 'Date', key: 'date', render: (d) => dateText(d.date) },
         { header: 'Vehicle', key: 'vehicle', render: (d) => <strong>{d.vehicle?.regNo}</strong> },
         { header: 'Pump / Creditor', key: 'pump', render: (d) => d.pumpAccount?.accountName || <span style={{color:'red'}}>Unlinked</span> },
         { header: 'Slip No', key: 'slipNumber', render: (d) => d.slipNumber || '-' },
-        { header: 'Liters', key: 'liters', render: (d) => `${d.quantityLiters} L` },
-        { header: 'Amount', key: 'total', render: (d) => <strong style={{color:'#ea580c'}}>₹{d.totalAmount.toFixed(2)}</strong> },
+        { header: 'Liters', key: 'liters', render: (d) => `${num(d.quantityLiters).toFixed(2)} L` },
+        { header: 'Amount', key: 'total', render: (d) => <strong style={{color:'#ea580c'}}>{money(d.totalAmount)}</strong> },
         { header: 'Actions', key: 'actions', render: (d) => (
             <div style={{display:'flex', gap:'10px'}}>
                 <button onClick={() => handleEdit(d)} style={{color:'#3b82f6', background:'none', border:'none', cursor:'pointer', fontWeight:'bold'}}>Edit</button>
@@ -134,7 +138,7 @@ export default function DieselManagement() {
                         <label style={{ fontSize: '11px', fontWeight: '600', color: '#64748b' }}>Link to Trip (Optional)</label>
                         <select name="tripId" value={formData.tripId} onChange={handleChange} style={{ padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize:'13px' }}>
                             <option value="">-- Standalone (No Trip) --</option>
-                            {trips.filter(t => t.vehicleId.toString() === formData.vehicleId).map(t => 
+                            {trips.filter(t => String(t.vehicleId || '') === String(formData.vehicleId || '')).map(t => 
                                 <option key={t.id} value={t.id}>{t.tripNo} ({t.route?.toLocation})</option>
                             )}
                         </select>
@@ -145,11 +149,11 @@ export default function DieselManagement() {
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px', marginBottom: '25px', backgroundColor: '#f8fafc', padding: '15px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
                     <FormGroup label="Slip / Bill Number" name="slipNumber" value={formData.slipNumber} onChange={handleChange} />
                     <FormGroup label="Quantity (Liters)" name="quantityLiters" type="number" value={formData.quantityLiters} onChange={handleChange} required />
-                    <FormGroup label="Rate Per Liter (₹)" name="ratePerLiter" type="number" value={formData.ratePerLiter} onChange={handleChange} required />
+                    <FormGroup label="Rate Per Liter (Rs.)" name="ratePerLiter" type="number" value={formData.ratePerLiter} onChange={handleChange} required />
                     
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                        <label style={{ fontSize: '11px', fontWeight: '600', color: '#16a34a' }}>Total Amount (₹)</label>
-                        <input type="number" value={formData.totalAmount.toFixed(2)} disabled style={{ padding: '8px', borderRadius: '4px', border: '1px solid #bbf7d0', backgroundColor: '#f0fdf4', fontSize:'13px', fontWeight: 'bold' }} />
+                        <label style={{ fontSize: '11px', fontWeight: '600', color: '#16a34a' }}>Total Amount (Rs.)</label>
+                        <input type="number" value={num(formData.totalAmount).toFixed(2)} disabled style={{ padding: '8px', borderRadius: '4px', border: '1px solid #bbf7d0', backgroundColor: '#f0fdf4', fontSize:'13px', fontWeight: 'bold' }} />
                     </div>
                 </div>
 

@@ -1,10 +1,11 @@
 ﻿const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 const { withTenant } = require('./tenant');
+const { ensureStandardAccountingAccounts, ensureVendorDieselAccount } = require('../lib/accountingAccounts');
+const { toNumber, toInt, toRequiredInt, toDate } = require('../lib/coerce');
 const router = express.Router();
 const prisma = new PrismaClient();
 
-// GET ALL SETTLEMENTS
 router.get('/', async (req, res) => {
     try {
         const settlements = await prisma.vendorSettlement.findMany({
@@ -18,68 +19,174 @@ router.get('/', async (req, res) => {
     }
 });
 
-// CREATE NEW VENDOR SETTLEMENT
 router.post('/', async (req, res) => {
     const d = req.body;
     try {
-        const lastSet = await prisma.vendorSettlement.findFirst({ where: withTenant(req), orderBy: { id: 'desc' } });
-        let nextSeq = 1;
-        if (lastSet && lastSet.settlementNo && lastSet.settlementNo.startsWith('VS')) {
-            nextSeq = parseInt(lastSet.settlementNo.replace('VS', ''), 10) + 1;
-        }
-        const settlementNo = `VS${nextSeq.toString().padStart(3, '0')}`;
+        const settlement = await prisma.$transaction(async (tx) => {
+            const vendorId = toInt(d.vendorId);
+            const tripIds = (d.tripIds || []).map(id => toInt(id)).filter(id => Number.isInteger(id));
+            if (!vendorId) throw new Error('Vendor ledger is required.');
+            if (!tripIds.length) throw new Error('Select at least one trip to settle.');
 
-        const settlement = await prisma.vendorSettlement.create({
-            data: {
-                settlementNo,
-                tenantKey: req.tenantKey,
-                date: d.date ? new Date(d.date) : new Date(),
-                
-                vendorId: d.vendorId ? parseInt(d.vendorId) : null,
-                
-                totalFreight: parseFloat(d.totalFreight) || 0,
-                totalHalting: parseFloat(d.totalHalting) || 0,
-                totalExtraSize: parseFloat(d.totalExtraSize) || 0,
-                grossAmount: parseFloat(d.grossAmount) || 0,
-                totalAdvances: parseFloat(d.totalAdvances) || 0,
-                totalCommission: parseFloat(d.totalCommission) || 0,
-                otherDeductions: parseFloat(d.otherDeductions) || 0,
-                netPayable: parseFloat(d.netPayable) || 0,
-                status: 'Generated',
-                
-                trips: { connect: (d.tripIds || []).map(id => ({ id: parseInt(id) })) }
+            const selectedTrips = await tx.trip.findMany({
+                where: withTenant(req, {
+                    id: { in: tripIds },
+                    settlementId: null,
+                    vehicle: { vendorAccountId: vendorId }
+                })
+            });
+            if (selectedTrips.length !== tripIds.length) throw new Error('One or more trips are already settled or do not belong to this vendor.');
+
+            const lastSet = await tx.vendorSettlement.findFirst({ where: withTenant(req), orderBy: { id: 'desc' } });
+            let nextSeq = 1;
+            if (lastSet && lastSet.settlementNo && lastSet.settlementNo.startsWith('VS')) {
+                const lastSeq = toInt(lastSet.settlementNo.replace('VS', ''), 0);
+                if (!isNaN(lastSeq)) nextSeq = lastSeq + 1;
             }
-        });
+            const settlementNo = `VS${nextSeq.toString().padStart(3, '0')}`;
+            const grossAmount = toNumber(d.grossAmount);
+            const netPayable = toNumber(d.netPayable);
+            const settlementDate = toDate(d.date, new Date());
 
-        // AUTOMATIC LEDGER POSTING directly to the Vendor Account
-        if (d.vendorId) {
-            await prisma.ledgerEntry.create({
+            const createdSettlement = await tx.vendorSettlement.create({
                 data: {
-                    date: d.date ? new Date(d.date) : new Date(),
+                    settlementNo,
                     tenantKey: req.tenantKey,
-                    accountId: parseInt(d.vendorId),
-                    type: 'Cr',
-                    amount: parseFloat(d.netPayable) || 0,
-                    narration: `Auto-Settlement Generated: ${settlementNo}`,
-                    settlementId: settlement.id
+                    date: settlementDate,
+                    vendorId,
+                    totalFreight: toNumber(d.totalFreight),
+                    totalHalting: toNumber(d.totalHalting),
+                    totalExtraSize: toNumber(d.totalExtraSize),
+                    grossAmount,
+                    totalAdvances: toNumber(d.totalAdvances),
+                    totalCommission: toNumber(d.totalCommission),
+                    otherDeductions: toNumber(d.otherDeductions),
+                    netPayable,
+                    status: netPayable <= 0 ? 'Paid' : 'Unpaid',
+                    trips: { connect: tripIds.map(id => ({ id })) }
                 }
             });
-        }
+
+            const standardAccounts = await ensureStandardAccountingAccounts(tx, req);
+            const ledgerEntries = [];
+            if (grossAmount > 0) {
+                const expenseAccount = standardAccounts['Vendor Freight Expense'];
+                ledgerEntries.push(
+                    {
+                        date: settlementDate,
+                        tenantKey: req.tenantKey,
+                        accountId: expenseAccount.id,
+                        type: 'Dr',
+                        amount: grossAmount,
+                        narration: `Vendor Freight Expense: ${settlementNo}`,
+                        settlementId: createdSettlement.id
+                    },
+                    {
+                        date: settlementDate,
+                        tenantKey: req.tenantKey,
+                        accountId: vendorId,
+                        type: 'Cr',
+                        amount: grossAmount,
+                        narration: `Vendor Freight Payable: ${settlementNo}`,
+                        settlementId: createdSettlement.id
+                    }
+                );
+            }
+
+            const commission = toNumber(d.totalCommission);
+            if (commission > 0) {
+                ledgerEntries.push(
+                    {
+                        date: settlementDate,
+                        tenantKey: req.tenantKey,
+                        accountId: vendorId,
+                        type: 'Dr',
+                        amount: commission,
+                        narration: `Vendor Commission Deducted: ${settlementNo}`,
+                        settlementId: createdSettlement.id
+                    },
+                    {
+                        date: settlementDate,
+                        tenantKey: req.tenantKey,
+                        accountId: standardAccounts['Vendor Commission Income'].id,
+                        type: 'Cr',
+                        amount: commission,
+                        narration: `Vendor Commission Income: ${settlementNo}`,
+                        settlementId: createdSettlement.id
+                    }
+                );
+            }
+
+            const dieselByClient = selectedTrips.reduce((sum, trip) => sum + toNumber(trip.dieselAmount), 0);
+            if (dieselByClient > 0) {
+                const vendorAccount = await tx.account.findFirst({ where: withTenant(req, { id: vendorId }) });
+                const vendorDieselAccount = vendorAccount ? await ensureVendorDieselAccount(tx, req, vendorAccount) : null;
+                if (!vendorDieselAccount) throw new Error('Vendor diesel account could not be created.');
+                ledgerEntries.push(
+                    {
+                        date: settlementDate,
+                        tenantKey: req.tenantKey,
+                        accountId: vendorId,
+                        type: 'Dr',
+                        amount: dieselByClient,
+                        narration: `Client-Paid Diesel Deducted: ${settlementNo}`,
+                        settlementId: createdSettlement.id
+                    },
+                    {
+                        date: settlementDate,
+                        tenantKey: req.tenantKey,
+                        accountId: vendorDieselAccount.id,
+                        type: 'Cr',
+                        amount: dieselByClient,
+                        narration: `Vendor Diesel Recoverable Cleared: ${settlementNo}`,
+                        settlementId: createdSettlement.id
+                    }
+                );
+            }
+            const otherDeductions = toNumber(d.otherDeductions);
+            if (otherDeductions > 0) {
+                ledgerEntries.push(
+                    {
+                        date: settlementDate,
+                        tenantKey: req.tenantKey,
+                        accountId: vendorId,
+                        type: 'Dr',
+                        amount: otherDeductions,
+                        narration: `Vendor Other Deduction: ${settlementNo}`,
+                        settlementId: createdSettlement.id
+                    },
+                    {
+                        date: settlementDate,
+                        tenantKey: req.tenantKey,
+                        accountId: standardAccounts['Vendor Deduction Income'].id,
+                        type: 'Cr',
+                        amount: otherDeductions,
+                        narration: `Vendor Deduction Income: ${settlementNo}`,
+                        settlementId: createdSettlement.id
+                    }
+                );
+            }
+
+            if (ledgerEntries.length) await tx.ledgerEntry.createMany({ data: ledgerEntries });
+
+            return createdSettlement;
+        });
 
         res.json(settlement);
     } catch (error) {
         console.error("Settlement Error:", error);
-        res.status(400).json({ error: "Failed to create settlement." });
+        res.status(400).json({ error: error.message || "Failed to create settlement." });
     }
 });
 
-// DELETE SETTLEMENT
 router.delete('/:id', async (req, res) => {
     try {
-        // Delete associated ledger entries first to avoid foreign key constraints
-        await prisma.ledgerEntry.updateMany({ where: withTenant(req, { settlementId: parseInt(req.params.id) }), data: { deletedAt: new Date() } });
-        // Then delete the settlement itself
-        await prisma.vendorSettlement.updateMany({ where: withTenant(req, { id: parseInt(req.params.id) }), data: { deletedAt: new Date() } });
+        await prisma.$transaction(async (tx) => {
+            const settlementId = toRequiredInt(req.params.id, 'Settlement');
+            await tx.ledgerEntry.updateMany({ where: withTenant(req, { settlementId }), data: { deletedAt: new Date() } });
+            await tx.trip.updateMany({ where: withTenant(req, { settlementId }), data: { settlementId: null } });
+            await tx.vendorSettlement.updateMany({ where: withTenant(req, { id: settlementId }), data: { deletedAt: new Date() } });
+        });
         res.json({ message: "Settlement deleted." });
     } catch (error) {
         res.status(400).json({ error: "Failed to delete settlement." });
@@ -87,4 +194,5 @@ router.delete('/:id', async (req, res) => {
 });
 
 module.exports = router;
+
 

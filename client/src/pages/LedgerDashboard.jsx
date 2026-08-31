@@ -1,5 +1,24 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import DataTable from '../components/DataTable';
+
+const money = (value) => `Rs.${Number(value || 0).toFixed(2)}`;
+const today = () => new Date().toISOString().split('T')[0];
+const dateText = (value) => value ? new Date(value).toLocaleDateString() : '-';
+const inputStyle = {
+    width: '100%',
+    padding: '10px 12px',
+    border: '1px solid #cbd5e1',
+    borderRadius: '6px',
+    fontSize: '13px',
+    background: 'white'
+};
+const labelStyle = {
+    display: 'grid',
+    gap: '6px',
+    fontSize: '12px',
+    fontWeight: 700,
+    color: '#475569'
+};
 
 const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({
     '&': '&amp;',
@@ -13,87 +32,52 @@ export default function LedgerDashboard() {
     const [accounts, setAccounts] = useState([]);
     const [selectedAccount, setSelectedAccount] = useState(null);
     const [transactions, setTransactions] = useState([]);
-    const [editId, setEditId] = useState(null);
-
-    // Filter States
     const [filterStartDate, setFilterStartDate] = useState('');
     const [filterEndDate, setFilterEndDate] = useState('');
-    const [filterType, setFilterType] = useState('All'); // All, Dr, Cr
-
-    const initialEntry = { 
-        accountId: '', type: 'Dr', amount: '', narration: '', 
-        date: new Date().toISOString().split('T')[0] 
-    };
-    const [manualEntry, setManualEntry] = useState(initialEntry);
+    const [filterType, setFilterType] = useState('All');
+    const [voucher, setVoucher] = useState({ debitAccountId: '', creditAccountId: '', amount: '', narration: '', date: today() });
+    const debitAccount = accounts.find(a => String(a.id) === String(voucher.debitAccountId));
+    const creditAccount = accounts.find(a => String(a.id) === String(voucher.creditAccountId));
 
     const fetchAccounts = async () => {
-        try {
-            const res = await fetch('/api/ledger/accounts');
-            if (res.ok) setAccounts(await res.json());
-        } catch (err) { console.error(err); }
+        const res = await fetch('/api/ledger/accounts');
+        if (res.ok) setAccounts(await res.json());
     };
 
-    useEffect(() => { fetchAccounts(); }, []);
+    useEffect(() => { fetchAccounts().catch(console.error); }, []);
 
     const viewStatement = async (accountId) => {
-        try {
-            const acc = accounts.find(a => a.id === accountId);
-            setSelectedAccount(acc);
-            const res = await fetch(`/api/ledger/transactions/${accountId}`);
-            if (res.ok) setTransactions(await res.json());
-        } catch (error) { console.error(error); }
+        const acc = accounts.find(a => a.id === accountId);
+        setSelectedAccount(acc);
+        const res = await fetch(`/api/ledger/transactions/${accountId}`);
+        if (res.ok) setTransactions(await res.json());
     };
 
-    const handleManualSubmit = async (e) => {
-        e.preventDefault();
-        try {
-            const method = editId ? 'PUT' : 'POST';
-            const url = editId ? `/api/ledger/manual/${editId}` : '/api/ledger/manual';
-            
-            const res = await fetch(url, {
-                method, headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(manualEntry)
-            });
-            
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error || "Failed to save entry");
-            
-            alert(editId ? "Entry Updated!" : "Entry Posted Successfully!");
-            setManualEntry(initialEntry);
-            setEditId(null);
-            fetchAccounts();
-            
-            if (selectedAccount && manualEntry.accountId === selectedAccount.id.toString()) {
-                viewStatement(selectedAccount.id);
-            }
-        } catch (error) { alert(error.message); }
-    };
-
-    const handleEdit = (txn) => {
-        setEditId(txn.id);
-        setManualEntry({
-            accountId: txn.accountId.toString(),
-            type: txn.type,
-            amount: txn.amount,
-            narration: txn.narration,
-            date: new Date(txn.date).toISOString().split('T')[0]
+    const postVoucher = async (event) => {
+        event.preventDefault();
+        if (voucher.debitAccountId === voucher.creditAccountId) return alert('Debit and credit accounts cannot be the same.');
+        const res = await fetch('/api/ledger/manual', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(voucher)
         });
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        const data = await res.json();
+        if (!res.ok) return alert(data.error || 'Failed to post voucher.');
+        alert(`Voucher posted: ${data.voucherId}`);
+        setVoucher({ debitAccountId: '', creditAccountId: '', amount: '', narration: '', date: today() });
+        await fetchAccounts();
+        if (selectedAccount) viewStatement(selectedAccount.id);
     };
 
-    const handleDelete = async (id) => {
-        if (!(await window.confirmSnackbar("Are you sure you want to delete this manual entry?"))) return;
-        try {
-            const res = await fetch(`/api/ledger/manual/${id}`, { method: 'DELETE' });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error || "Failed to delete");
-            
-            fetchAccounts();
-            if (selectedAccount) viewStatement(selectedAccount.id);
-        } catch (error) { alert(error.message); }
+    const deleteManualVoucher = async (id) => {
+        if (!(await window.confirmSnackbar('Delete this manual voucher? Both sides will be reversed.'))) return;
+        const res = await fetch(`/api/ledger/manual/${id}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (!res.ok) return alert(data.error || 'Failed to delete voucher.');
+        await fetchAccounts();
+        if (selectedAccount) viewStatement(selectedAccount.id);
     };
 
-    // Apply Statement Filters
     const filteredTransactions = transactions.filter(t => {
         if (filterStartDate && new Date(t.date) < new Date(filterStartDate)) return false;
         if (filterEndDate && new Date(t.date) > new Date(filterEndDate)) return false;
@@ -101,232 +85,127 @@ export default function LedgerDashboard() {
         return true;
     });
 
-    // ==========================================
-    // EXPORT ENGINES
-    // ==========================================
     const handleExportCSV = () => {
-        if (!filteredTransactions || filteredTransactions.length === 0) return alert("No transactions to export.");
-
-        const headers = ["Date", "Narration", "Reference", "Debit (Dr)", "Credit (Cr)"];
+        if (!filteredTransactions.length) return alert('No transactions to export.');
         const rows = filteredTransactions.map(t => {
-            const date = new Date(t.date).toLocaleDateString();
-            const narration = (t.narration || '').replace(/"/g, '""'); // Escape quotes for CSV
-            const ref = t.trip?.tripNo || t.invoice?.invoiceNo || t.settlement?.settlementNo || 'Manual Voucher';
-            const dr = t.type === 'Dr' ? t.amount.toFixed(2) : '';
-            const cr = t.type === 'Cr' ? t.amount.toFixed(2) : '';
-            return `"${date}","${narration}","${ref}","${dr}","${cr}"`;
+            const ref = t.trip?.tripNo || t.invoice?.invoiceNo || t.settlement?.settlementNo || t.driverSettlement?.settlementNo || 'Manual Voucher';
+            return [dateText(t.date), t.narration || '', ref, t.type === 'Dr' ? Number(t.amount || 0).toFixed(2) : '', t.type === 'Cr' ? Number(t.amount || 0).toFixed(2) : '']
+                .map(value => `"${String(value).replace(/"/g, '""')}"`).join(',');
         });
-
-        const csvContent = "data:text/csv;charset=utf-8," + [headers.join(','), ...rows].join('\n');
-        const encodedUri = encodeURI(csvContent);
-        const link = document.createElement("a");
-        link.setAttribute("href", encodedUri);
-        link.setAttribute("download", `${selectedAccount.accountName.replace(/\s+/g, '_')}_Statement_${new Date().toISOString().split('T')[0]}.csv`);
+        const csvContent = 'data:text/csv;charset=utf-8,' + ['Date,Narration,Reference,Debit (Dr),Credit (Cr)', ...rows].join('\n');
+        const link = document.createElement('a');
+        link.setAttribute('href', encodeURI(csvContent));
+        link.setAttribute('download', `${selectedAccount.accountName.replace(/\s+/g, '_')}_Statement_${today()}.csv`);
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
     };
 
     const handleExportPDF = () => {
-        if (!filteredTransactions || filteredTransactions.length === 0) return alert("No transactions to print.");
-
+        if (!filteredTransactions.length) return alert('No transactions to print.');
         const printWindow = window.open('', '_blank');
-        const html = `
-            <html>
-                <head>
-                    <title>${selectedAccount.accountName} - Ledger Statement</title>
-                    <style>
-                        body { font-family: Arial, sans-serif; padding: 20px; color: #333; }
-                        h2 { text-align: center; color: #1e293b; margin-bottom: 5px; text-transform: uppercase; }
-                        p { text-align: center; color: #64748b; font-size: 13px; margin-bottom: 30px; }
-                        table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 25px; }
-                        th, td { border: 1px solid #cbd5e1; padding: 10px; text-align: left; }
-                        th { background-color: #f1f5f9; font-weight: bold; color: #334155; }
-                        .text-right { text-align: right; }
-                        .summary { float: right; border: 2px solid #1e293b; padding: 15px; border-radius: 6px; font-size: 15px; font-weight: bold; background-color: #f8fafc; }
-                    </style>
-                </head>
-                <body>
-                    <h2>${selectedAccount.accountName}</h2>
-                    <p>
-                        <strong>Account Group:</strong> ${selectedAccount.accountGroup} <br/>
-                        <strong>Statement Date:</strong> ${new Date().toLocaleString()}
-                    </p>
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Date</th>
-                                <th>Narration</th>
-                                <th>Reference</th>
-                                <th class="text-right">Debit (Dr)</th>
-                                <th class="text-right">Credit (Cr)</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${filteredTransactions.map(t => `
-                                <tr>
-                                    <td>${new Date(t.date).toLocaleDateString()}</td>
-                                    <td>${escapeHtml(t.narration || '-')}</td>
-                                    <td>${escapeHtml(t.trip?.tripNo || t.invoice?.invoiceNo || t.settlement?.settlementNo || 'Manual Voucher')}</td>
-                                    <td class="text-right" style="color: #16a34a; font-weight: bold;">${t.type === 'Dr' ? t.amount.toFixed(2) : '-'}</td>
-                                    <td class="text-right" style="color: #ea580c; font-weight: bold;">${t.type === 'Cr' ? t.amount.toFixed(2) : '-'}</td>
-                                </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
-                    <div class="summary">
-                        Current Final Balance: ₹${selectedAccount.currentBalance?.toFixed(2)} ${selectedAccount.balanceType}
-                    </div>
-                    <script>
-                        window.onload = () => { window.print(); window.close(); }
-                    </script>
-                </body>
-            </html>
-        `;
-        printWindow.document.write(html);
+        printWindow.document.write(`
+            <html><head><title>${escapeHtml(selectedAccount.accountName)} - Ledger Statement</title>
+            <style>body{font-family:Arial,sans-serif;padding:20px;color:#111827}table{width:100%;border-collapse:collapse;font-size:12px}th,td{border:1px solid #cbd5e1;padding:8px;text-align:left}th{background:#f1f5f9}.right{text-align:right}</style></head>
+            <body><h2>${escapeHtml(selectedAccount.accountName)}</h2><p>${escapeHtml(selectedAccount.accountGroup)} | Balance: ${money(selectedAccount.currentBalance)} ${selectedAccount.balanceType}</p>
+            <table><thead><tr><th>Date</th><th>Narration</th><th>Reference</th><th class="right">Dr</th><th class="right">Cr</th></tr></thead><tbody>
+            ${filteredTransactions.map(t => `<tr><td>${dateText(t.date)}</td><td>${escapeHtml(t.narration || '-')}</td><td>${escapeHtml(t.trip?.tripNo || t.invoice?.invoiceNo || t.settlement?.settlementNo || t.driverSettlement?.settlementNo || 'Manual Voucher')}</td><td class="right">${t.type === 'Dr' ? money(t.amount) : '-'}</td><td class="right">${t.type === 'Cr' ? money(t.amount) : '-'}</td></tr>`).join('')}
+            </tbody></table><script>window.onload=()=>{window.print();window.close()}</script></body></html>`);
         printWindow.document.close();
     };
 
-    // ==========================================
-    // TABLE COLUMNS
-    // ==========================================
     const accountColumns = [
-        { header: 'Account Name', key: 'accountName', render: (a) => <strong>{a.accountName}</strong> },
-        { header: 'Group', key: 'accountGroup', render: (a) => a.accountGroup },
-        { header: 'Current Balance', key: 'currentBalance', render: (a) => (
-            <span style={{ fontWeight: 'bold', color: a.balanceType === 'Dr' && a.currentBalance >= 0 ? '#16a34a' : (a.balanceType === 'Cr' && a.currentBalance >= 0 ? '#ea580c' : '#dc2626') }}>
-                ₹{a.currentBalance?.toFixed(2)} {a.balanceType}
-            </span>
-        )},
-        { header: 'Actions', key: 'actions', render: (a) => (
-            <button onClick={() => viewStatement(a.id)} style={{ padding: '6px 12px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>View Statement</button>
-        )}
+        { header: 'Account Name', key: 'accountName', render: a => <strong>{a.accountName}</strong> },
+        { header: 'Type', key: 'accountType', render: a => a.accountType },
+        { header: 'Group', key: 'accountGroup', render: a => a.accountGroup },
+        { header: 'Balance', key: 'currentBalance', render: a => <strong style={{ color: a.currentBalance >= 0 ? '#0f766e' : '#dc2626' }}>{money(a.currentBalance)} {a.balanceType}</strong> },
+        { header: 'Actions', key: 'actions', render: a => <button onClick={() => viewStatement(a.id)} style={{ padding: '7px 12px', background: '#2563eb', color: 'white', border: 0, borderRadius: '6px', cursor: 'pointer', fontWeight: 700 }}>Statement</button> }
     ];
 
     const txnColumns = [
-        { header: 'Date', key: 'date', render: (t) => new Date(t.date).toLocaleDateString() },
-        { header: 'Narration', key: 'narration', render: (t) => t.narration || '-' },
-        { header: 'Reference', key: 'ref', render: (t) => {
-            if (t.trip?.tripNo) return <span style={{color: '#64748b'}}>Trip: {t.trip.tripNo}</span>;
-            if (t.invoice?.invoiceNo) return <span style={{color: '#64748b'}}>Inv: {t.invoice.invoiceNo}</span>;
-            if (t.settlement?.settlementNo) return <span style={{color: '#64748b'}}>Set: {t.settlement.settlementNo}</span>;
-            return <span style={{fontWeight: 'bold', color: '#8b5cf6'}}>Manual Voucher</span>;
-        }},
-        { header: 'Debit (Dr)', key: 'debit', render: (t) => t.type === 'Dr' ? <span style={{color: '#16a34a', fontWeight: 'bold'}}>₹{t.amount.toFixed(2)}</span> : '-' },
-        { header: 'Credit (Cr)', key: 'credit', render: (t) => t.type === 'Cr' ? <span style={{color: '#ea580c', fontWeight: 'bold'}}>₹{t.amount.toFixed(2)}</span> : '-' },
-        { header: 'Actions', key: 'actions', render: (t) => {
-            const isManual = !t.tripId && !t.invoiceId && !t.settlementId && !t.dieselId;
-            if (!isManual) return <span style={{fontSize: '11px', color: '#94a3b8'}}>Auto-System</span>;
-            return (
-                <div style={{display: 'flex', gap: '8px'}}>
-                    <button onClick={() => handleEdit(t)} style={{background: 'none', border: 'none', color: '#3b82f6', cursor: 'pointer', fontWeight: 'bold'}}>Edit</button>
-                    <button onClick={() => handleDelete(t.id)} style={{background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontWeight: 'bold'}}>Del</button>
-                </div>
-            );
+        { header: 'Date', key: 'date', render: t => dateText(t.date) },
+        { header: 'Narration', key: 'narration', render: t => t.narration || '-' },
+        { header: 'Reference', key: 'ref', render: t => t.trip?.tripNo || t.invoice?.invoiceNo || t.settlement?.settlementNo || t.driverSettlement?.settlementNo || 'Manual Voucher' },
+        { header: 'Debit', key: 'debit', render: t => t.type === 'Dr' ? <strong style={{ color: '#0f766e' }}>{money(t.amount)}</strong> : '-' },
+        { header: 'Credit', key: 'credit', render: t => t.type === 'Cr' ? <strong style={{ color: '#b45309' }}>{money(t.amount)}</strong> : '-' },
+        { header: 'Actions', key: 'actions', render: t => {
+            const isManual = !t.tripId && !t.invoiceId && !t.settlementId && !t.dieselId && !t.driverSettlementId;
+            return isManual ? <button onClick={() => deleteManualVoucher(t.id)} style={{ background: 'none', border: 0, color: '#dc2626', cursor: 'pointer', fontWeight: 700 }}>Delete</button> : <span style={{ color: '#94a3b8', fontSize: '12px' }}>Auto-System</span>;
         }}
     ];
 
     return (
         <div style={{ padding: '20px', maxWidth: '1400px', margin: '0 auto' }}>
-            <h2 style={{ color: '#1e293b', marginBottom: '20px' }}>General Ledger Dashboard</h2>
+            <h2 style={{ color: '#0f172a', marginBottom: '18px' }}>General Ledger Dashboard</h2>
 
-            {/* Direct Manual Entry Form */}
-            <form onSubmit={handleManualSubmit} style={{ backgroundColor: editId ? '#fffbeb' : '#f8fafc', padding: '20px', borderRadius: '12px', border: editId ? '2px solid #f59e0b' : '1px solid #cbd5e1', marginBottom: '25px', display: 'flex', gap: '15px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
-                <div style={{ flex: '1 1 200px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                    <label style={{ fontSize: '11px', fontWeight: 'bold', color: editId ? '#d97706' : '#475569' }}>
-                        {editId ? "Editing Account" : "Select Account (Pump/Driver/Vendor)"}
+            <form onSubmit={postVoucher} style={{ background: 'white', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '24px', boxShadow: '0 8px 24px rgba(15,23,42,0.06)', overflow: 'hidden' }}>
+                <div style={{ padding: '14px 18px', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'center', flexWrap: 'wrap', background: '#f8fafc' }}>
+                    <div>
+                        <h3 style={{ margin: 0, color: '#0f172a', fontSize: '16px' }}>Post Voucher</h3>
+                        <span style={{ color: '#64748b', fontSize: '12px' }}>Manual journal entry</span>
+                    </div>
+                    <strong style={{ color: '#0f766e', fontSize: '18px' }}>{money(voucher.amount)}</strong>
+                </div>
+
+                <div style={{ padding: '18px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '18px' }}>
+                    <div style={{ border: '1px solid #bfdbfe', borderRadius: '8px', padding: '14px', background: '#eff6ff' }}>
+                        <label style={labelStyle}>Debit Account
+                            <select value={voucher.debitAccountId} onChange={e => setVoucher({ ...voucher, debitAccountId: e.target.value })} required style={inputStyle}>
+                                <option value="">Choose debit account</option>{accounts.map(a => <option key={a.id} value={a.id}>{a.accountName} ({a.accountGroup})</option>)}
+                            </select>
+                        </label>
+                        <div style={{ marginTop: '10px', color: '#1d4ed8', fontSize: '12px', minHeight: '32px' }}>
+                            {debitAccount ? <><strong>{debitAccount.accountName}</strong><br />{debitAccount.accountGroup}</> : 'Debit side'}
+                        </div>
+                    </div>
+
+                    <div style={{ border: '1px solid #bbf7d0', borderRadius: '8px', padding: '14px', background: '#f0fdf4' }}>
+                        <label style={labelStyle}>Credit Account
+                            <select value={voucher.creditAccountId} onChange={e => setVoucher({ ...voucher, creditAccountId: e.target.value })} required style={inputStyle}>
+                                <option value="">Choose credit account</option>{accounts.map(a => <option key={a.id} value={a.id}>{a.accountName} ({a.accountGroup})</option>)}
+                            </select>
+                        </label>
+                        <div style={{ marginTop: '10px', color: '#15803d', fontSize: '12px', minHeight: '32px' }}>
+                            {creditAccount ? <><strong>{creditAccount.accountName}</strong><br />{creditAccount.accountGroup}</> : 'Credit side'}
+                        </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px', gridColumn: '1 / -1' }}>
+                        <label style={labelStyle}>Date
+                            <input type="date" value={voucher.date} onChange={e => setVoucher({ ...voucher, date: e.target.value })} required style={inputStyle} />
+                        </label>
+                        <label style={labelStyle}>Amount
+                            <input type="number" step="any" min="0" value={voucher.amount} onChange={e => setVoucher({ ...voucher, amount: e.target.value })} required style={inputStyle} />
+                        </label>
+                    </div>
+
+                    <label style={{ ...labelStyle, gridColumn: '1 / -1' }}>Narration
+                        <textarea value={voucher.narration} onChange={e => setVoucher({ ...voucher, narration: e.target.value })} required rows={3} style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.4 }} />
                     </label>
-                    <select value={manualEntry.accountId} onChange={(e) => setManualEntry({...manualEntry, accountId: e.target.value})} required style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '4px' }}>
-                        <option value="">-- Choose Account --</option>
-                        {accounts.map(a => <option key={a.id} value={a.id}>{a.accountName} ({a.accountGroup})</option>)}
-                    </select>
-                </div>
 
-                <div style={{ flex: '0 1 120px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                    <label style={{ fontSize: '11px', fontWeight: 'bold', color: '#475569' }}>Date</label>
-                    <input type="date" required value={manualEntry.date} onChange={(e) => setManualEntry({...manualEntry, date: e.target.value})} style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '4px' }} />
-                </div>
-
-                <div style={{ flex: '0 1 100px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                    <label style={{ fontSize: '11px', fontWeight: 'bold', color: '#475569' }}>Type</label>
-                    <select value={manualEntry.type} onChange={(e) => setManualEntry({...manualEntry, type: e.target.value})} style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '4px' }}>
-                        <option value="Dr">Debit (Dr)</option>
-                        <option value="Cr">Credit (Cr)</option>
-                    </select>
-                </div>
-
-                <div style={{ flex: '0 1 150px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                    <label style={{ fontSize: '11px', fontWeight: 'bold', color: '#475569' }}>Amount (₹)</label>
-                    <input type="number" step="any" required value={manualEntry.amount} onChange={(e) => setManualEntry({...manualEntry, amount: e.target.value})} style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '4px' }} />
-                </div>
-
-                <div style={{ flex: '2 1 200px', display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                    <label style={{ fontSize: '11px', fontWeight: 'bold', color: '#475569' }}>Narration</label>
-                    <input type="text" required value={manualEntry.narration} onChange={(e) => setManualEntry({...manualEntry, narration: e.target.value})} placeholder="e.g. Pump Payment, Driver Cash Return" style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '4px' }} />
-                </div>
-
-                <div style={{ display: 'flex', gap: '10px' }}>
-                    {editId && (
-                        <button type="button" onClick={() => { setEditId(null); setManualEntry(initialEntry); }} style={{ padding: '9px 18px', backgroundColor: '#64748b', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>Cancel</button>
-                    )}
-                    <button type="submit" style={{ padding: '9px 18px', backgroundColor: editId ? '#f59e0b' : '#10b981', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
-                        {editId ? 'Update Entry' : 'Post Entry'}
-                    </button>
+                    <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'flex-end', gap: '10px', borderTop: '1px solid #e2e8f0', paddingTop: '14px' }}>
+                        <button type="button" onClick={() => setVoucher({ debitAccountId: '', creditAccountId: '', amount: '', narration: '', date: today() })} style={{ padding: '10px 16px', background: '#e2e8f0', color: '#334155', border: 0, borderRadius: '6px', cursor: 'pointer', fontWeight: 800 }}>Clear</button>
+                        <button type="submit" style={{ padding: '10px 18px', background: '#0f766e', color: 'white', border: 0, borderRadius: '6px', cursor: 'pointer', fontWeight: 800 }}>Post Voucher</button>
+                    </div>
                 </div>
             </form>
 
-            <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}>
-                <DataTable data={accounts} columns={accountColumns} title="Chart of Accounts Balances" />
-            </div>
+            <DataTable data={accounts} columns={accountColumns} title="Chart of Accounts Balances" />
 
             {selectedAccount && (
-                <div style={{ marginTop: '40px', padding: '25px', backgroundColor: 'white', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', border: '2px solid #cbd5e1' }}>
-                    
-                    {/* Header with Export Buttons */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                        <div>
-                            <h3 style={{ margin: 0, color: '#1e293b', fontSize: '18px' }}>Statement: {selectedAccount.accountName}</h3>
-                            <span style={{ fontSize: '13px', color: '#64748b' }}>Current Balance: <strong style={{ color: '#0f172a' }}>₹{selectedAccount.currentBalance?.toFixed(2)} {selectedAccount.balanceType}</strong></span>
-                        </div>
-                        <div style={{ display: 'flex', gap: '10px' }}>
-                            <button onClick={handleExportCSV} style={{ padding: '8px 16px', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
-                                📊 Excel (CSV)
-                            </button>
-                            <button onClick={handleExportPDF} style={{ padding: '8px 16px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
-                                🖨️ PDF / Print
-                            </button>
-                            <button onClick={() => setSelectedAccount(null)} style={{ padding: '8px 16px', backgroundColor: '#ef4444', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
-                                Close
-                            </button>
-                        </div>
+                <div style={{ marginTop: '28px', background: 'white', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '18px', boxShadow: '0 8px 24px rgba(15,23,42,0.06)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap' }}>
+                        <div><h3 style={{ margin: 0 }}>Statement: {selectedAccount.accountName}</h3><span style={{ color: '#64748b', fontSize: '13px' }}>{selectedAccount.accountGroup} | {money(selectedAccount.currentBalance)} {selectedAccount.balanceType}</span></div>
+                        <div style={{ display: 'flex', gap: '8px' }}><button onClick={handleExportCSV}>CSV</button><button onClick={handleExportPDF}>Print</button><button onClick={() => setSelectedAccount(null)}>Close</button></div>
                     </div>
-
-                    {/* Filters for Statement */}
-                    <div style={{ display: 'flex', gap: '15px', marginBottom: '20px', padding: '15px', backgroundColor: '#f1f5f9', borderRadius: '8px' }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                            <label style={{ fontSize: '11px', fontWeight: 'bold', color: '#475569' }}>Start Date</label>
-                            <input type="date" value={filterStartDate} onChange={(e) => setFilterStartDate(e.target.value)} style={{ padding: '6px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '12px' }} />
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                            <label style={{ fontSize: '11px', fontWeight: 'bold', color: '#475569' }}>End Date</label>
-                            <input type="date" value={filterEndDate} onChange={(e) => setFilterEndDate(e.target.value)} style={{ padding: '6px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '12px' }} />
-                        </div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                            <label style={{ fontSize: '11px', fontWeight: 'bold', color: '#475569' }}>Entry Type</label>
-                            <select value={filterType} onChange={(e) => setFilterType(e.target.value)} style={{ padding: '6px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '12px' }}>
-                                <option value="All">All Entries</option>
-                                <option value="Dr">Debit (Dr) Only</option>
-                                <option value="Cr">Credit (Cr) Only</option>
-                            </select>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-                            <button onClick={() => { setFilterStartDate(''); setFilterEndDate(''); setFilterType('All'); }} style={{ padding: '7px 12px', backgroundColor: '#e2e8f0', color: '#475569', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>Clear Filters</button>
-                        </div>
+                    <div style={{ display: 'flex', gap: '12px', marginBottom: '14px', flexWrap: 'wrap' }}>
+                        <input type="date" value={filterStartDate} onChange={e => setFilterStartDate(e.target.value)} />
+                        <input type="date" value={filterEndDate} onChange={e => setFilterEndDate(e.target.value)} />
+                        <select value={filterType} onChange={e => setFilterType(e.target.value)}><option value="All">All</option><option value="Dr">Dr only</option><option value="Cr">Cr only</option></select>
                     </div>
-
                     <DataTable data={filteredTransactions} columns={txnColumns} />
                 </div>
             )}
         </div>
     );
-}   
+}

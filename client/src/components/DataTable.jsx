@@ -8,14 +8,20 @@ const Icons = {
     Sort: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>
 };
 
-export default function DataTable({ data, columns, title = "Records" }) {
+export default function DataTable({ data, columns, title = "Records", enableColumnFilters = false }) {
     const [search, setSearch] = useState('');
+    const [columnFilters, setColumnFilters] = useState({});
     const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
     const [currentPage, setCurrentPage] = useState(1);
     const rowsPerPage = 10;
 
     // Helper to get nested object values (e.g., 'company.companyName')
     const getNestedValue = (obj, path) => path.split('.').reduce((acc, part) => acc && acc[part], obj);
+    const getCellValue = (row, col) => {
+        if (col.filterValue) return col.filterValue(row);
+        if (col.exportValue) return col.exportValue(row);
+        return getNestedValue(row, col.key);
+    };
 
     // Filter and Sort Engine
     const processedData = useMemo(() => {
@@ -27,17 +33,30 @@ export default function DataTable({ data, columns, title = "Records" }) {
             filtered = filtered.filter(row => {
                 return columns.some(col => {
                     if (col.key === 'actions') return false; // Don't search action buttons
-                    const val = getNestedValue(row, col.key);
+                    const val = getCellValue(row, col);
                     return String(val || '').toLowerCase().includes(lowerSearch);
                 });
             });
         }
 
-        // 2. Column Sort
+        // 2. Per-column Header Filters
+        if (enableColumnFilters) {
+            const activeFilters = Object.entries(columnFilters).filter(([, value]) => String(value || '').trim());
+            if (activeFilters.length) {
+                filtered = filtered.filter(row => activeFilters.every(([key, value]) => {
+                    const col = columns.find(item => item.key === key);
+                    if (!col) return true;
+                    return String(getCellValue(row, col) || '').toLowerCase().includes(String(value).toLowerCase());
+                }));
+            }
+        }
+
+        // 3. Column Sort
         if (sortConfig.key) {
+            const sortColumn = columns.find(col => col.key === sortConfig.key);
             filtered.sort((a, b) => {
-                const aVal = getNestedValue(a, sortConfig.key) || '';
-                const bVal = getNestedValue(b, sortConfig.key) || '';
+                const aVal = sortColumn ? getCellValue(a, sortColumn) || '' : getNestedValue(a, sortConfig.key) || '';
+                const bVal = sortColumn ? getCellValue(b, sortColumn) || '' : getNestedValue(b, sortConfig.key) || '';
                 
                 // Handle numbers vs strings
                 if (!isNaN(aVal) && !isNaN(bVal)) {
@@ -50,7 +69,19 @@ export default function DataTable({ data, columns, title = "Records" }) {
             });
         }
         return filtered;
-    }, [data, search, sortConfig, columns]);
+    }, [data, search, columnFilters, sortConfig, columns, enableColumnFilters]);
+
+    const updateColumnFilter = (key, value) => {
+        setColumnFilters(prev => ({ ...prev, [key]: value }));
+        setCurrentPage(1);
+    };
+
+    const clearColumnFilters = () => {
+        setColumnFilters({});
+        setCurrentPage(1);
+    };
+
+    const hasColumnFilters = Object.values(columnFilters).some(value => String(value || '').trim());
 
     const handleSort = (key) => {
         if (key === 'actions') return;
@@ -69,15 +100,22 @@ export default function DataTable({ data, columns, title = "Records" }) {
             {/* Header & Search Bar */}
             <div style={{ padding: '20px', backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
                 <h3 style={{ margin: 0, color: '#334155' }}>{title} ({processedData.length})</h3>
-                <div style={{ display: 'flex', alignItems: 'center', backgroundColor: 'white', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '6px 12px', minWidth: '250px' }}>
-                    <Icons.Search />
-                    <input 
-                        type="text" 
-                        placeholder="Search all columns..." 
-                        value={search} 
-                        onChange={(e) => { setSearch(e.target.value); setCurrentPage(1); }} 
-                        style={{ border: 'none', outline: 'none', marginLeft: '10px', width: '100%', fontSize: '14px' }} 
-                    />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                    {enableColumnFilters && hasColumnFilters && (
+                        <button type="button" onClick={clearColumnFilters} style={{ padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: '6px', background: 'white', color: '#475569', cursor: 'pointer', fontWeight: 700 }}>
+                            Clear filters
+                        </button>
+                    )}
+                    <div style={{ display: 'flex', alignItems: 'center', backgroundColor: 'white', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '6px 12px', minWidth: '250px' }}>
+                        <Icons.Search />
+                        <input 
+                            type="text" 
+                            placeholder="Search all columns..." 
+                            value={search} 
+                            onChange={(e) => { setSearch(e.target.value); setCurrentPage(1); }} 
+                            style={{ border: 'none', outline: 'none', marginLeft: '10px', width: '100%', fontSize: '14px' }} 
+                        />
+                    </div>
                 </div>
             </div>
 
@@ -100,6 +138,25 @@ export default function DataTable({ data, columns, title = "Records" }) {
                                 </th>
                             ))}
                         </tr>
+                        {enableColumnFilters && (
+                            <tr style={{ borderBottom: '1px solid #e2e8f0', background: '#f8fafc' }}>
+                                {columns.map((col, idx) => (
+                                    <th key={`filter-${idx}`} style={{ padding: '8px 12px' }}>
+                                        {col.key !== 'actions' && (
+                                            <input
+                                                type="text"
+                                                aria-label={`Filter ${col.header}`}
+                                                placeholder={`Filter ${col.header}`}
+                                                value={columnFilters[col.key] || ''}
+                                                onClick={(event) => event.stopPropagation()}
+                                                onChange={(event) => updateColumnFilter(col.key, event.target.value)}
+                                                style={{ width: '100%', minWidth: '110px', padding: '7px 8px', border: '1px solid #cbd5e1', borderRadius: '5px', fontSize: '12px', fontWeight: 500, textTransform: 'none', color: '#0f172a', background: 'white' }}
+                                            />
+                                        )}
+                                    </th>
+                                ))}
+                            </tr>
+                        )}
                     </thead>
                     <tbody>
                         {currentData.map((row, idx) => (

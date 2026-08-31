@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import DataTable from '../components/DataTable';
 
+const num = (value) => Number(value || 0);
+const money = (value) => `Rs.${num(value).toFixed(2)}`;
+const dateText = (value) => value ? new Date(value).toLocaleDateString() : '-';
+
 export default function VendorSettlement() {
     const [settlements, setSettlements] = useState([]);
     const [vehicles, setVehicles] = useState([]);
@@ -57,17 +61,17 @@ export default function VendorSettlement() {
         let freight = 0, halting = 0, extraSize = 0, advances = 0, gross = 0, autoCommission = 0;
 
         selectedTrips.forEach(t => {
-            const halt = t.vendorHaltingCharge || 0;
-            const odc = t.vendorExtraSizeCharge || 0;
-            const totalTripPayout = t.netTruckPayout || 0;
+            const halt = num(t.vendorHaltingCharge);
+            const odc = num(t.vendorExtraSizeCharge);
+            const totalTripPayout = num(t.netTruckPayout);
             
             halting += halt;
             extraSize += odc;
             freight += (totalTripPayout - halt - odc);
             gross += totalTripPayout;
             
-            advances += (t.advancePaid || 0) + (t.dieselAmount || 0);
-            autoCommission += (t.commission || 0);
+            advances += num(t.advancePaid) + num(t.dieselAmount);
+            autoCommission += num(t.commission);
         });
 
         // Use autoCommission from trips unless user overrides it
@@ -130,10 +134,10 @@ export default function VendorSettlement() {
 
     const columns = [
         { header: 'Settlement No', key: 'settlementNo', render: s => <strong>{s.settlementNo}</strong> },
-        { header: 'Date', key: 'date', render: s => new Date(s.date).toLocaleDateString() },
+        { header: 'Date', key: 'date', render: s => dateText(s.date) },
         { header: 'Vendor / Owner', key: 'vendor', render: s => s.vendor?.accountName || '-' },
-        { header: 'Gross Amount', key: 'grossAmount', render: s => `₹${s.grossAmount?.toFixed(2)}` },
-        { header: 'Net Payable', key: 'netPayable', render: s => <span style={{color:'#16a34a', fontWeight:'bold'}}>₹{s.netPayable?.toFixed(2)}</span> },
+        { header: 'Gross Amount', key: 'grossAmount', render: s => money(s.grossAmount) },
+        { header: 'Net Payable', key: 'netPayable', render: s => <span style={{color:'#16a34a', fontWeight:'bold'}}>{money(s.netPayable)}</span> },
         { header: 'Status', key: 'status', render: s => <span style={{backgroundColor:'#dcfce7', color:'#16a34a', padding:'4px 8px', borderRadius:'4px', fontSize:'12px', fontWeight:'bold'}}>{s.status}</span> },
         { header: 'Actions', key: 'actions', render: s => (
             <button onClick={() => handleDelete(s.id)} style={{color:'red', background:'none', border:'none', cursor:'pointer', fontWeight:'bold'}}>Delete</button>
@@ -177,26 +181,26 @@ export default function VendorSettlement() {
                                     <th style={{ padding: '10px' }}>Trip No</th>
                                     <th style={{ padding: '10px' }}>Date</th>
                                     <th style={{ padding: '10px' }}>Route</th>
-                                    <th style={{ padding: '10px', color: '#ef4444' }}>Advance (₹)</th>
-                                    <th style={{ padding: '10px', color: '#f59e0b' }}>Comm. (₹)</th>
-                                    <th style={{ padding: '10px', textAlign: 'right', color: '#16a34a' }}>Gross Payout (₹)</th>
+                                    <th style={{ padding: '10px', color: '#ef4444' }}>Advance (Rs.)</th>
+                                    <th style={{ padding: '10px', color: '#f59e0b' }}>Comm. (Rs.)</th>
+                                    <th style={{ padding: '10px', textAlign: 'right', color: '#16a34a' }}>Gross Payout (Rs.)</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {Object.entries(groupedTrips).map(([vehicleReg, trips]) => (
                                     <React.Fragment key={vehicleReg}>
                                         <tr style={{ backgroundColor: '#e2e8f0', color: '#1e293b' }}>
-                                            <td colSpan="7" style={{ padding: '8px 10px', fontWeight: 'bold' }}>🚛 Vehicle: {vehicleReg}</td>
+                                            <td colSpan="7" style={{ padding: '8px 10px', fontWeight: 'bold' }}>Vehicle: {vehicleReg}</td>
                                         </tr>
                                         {trips.map(t => (
                                             <tr key={t.id} style={{ borderBottom: '1px solid #f1f5f9', backgroundColor: selectedTripIds.includes(t.id) ? '#f0f9ff' : 'white' }}>
                                                 <td style={{ padding: '10px' }}><input type="checkbox" checked={selectedTripIds.includes(t.id)} onChange={() => handleTripToggle(t.id)} style={{cursor:'pointer'}} /></td>
                                                 <td style={{ padding: '10px', fontWeight: 'bold' }}>{t.tripNo}</td>
-                                                <td style={{ padding: '10px' }}>{new Date(t.date).toLocaleDateString()}</td>
+                                                <td style={{ padding: '10px' }}>{dateText(t.date)}</td>
                                                 <td style={{ padding: '10px' }}>{t.route?.toLocation}</td>
-                                                <td style={{ padding: '10px', color: '#ef4444' }}>{(t.advancePaid || 0) + (t.dieselAmount || 0)}</td>
-                                                <td style={{ padding: '10px', color: '#f59e0b', fontWeight: 'bold' }}>{t.commission || 0}</td>
-                                                <td style={{ padding: '10px', textAlign: 'right', fontWeight: 'bold', color: '#16a34a' }}>₹{t.netTruckPayout?.toFixed(2)}</td>
+                                                <td style={{ padding: '10px', color: '#ef4444' }}>{money(num(t.advancePaid) + num(t.dieselAmount))}</td>
+                                                <td style={{ padding: '10px', color: '#f59e0b', fontWeight: 'bold' }}>{money(t.commission)}</td>
+                                                <td style={{ padding: '10px', textAlign: 'right', fontWeight: 'bold', color: '#16a34a' }}>{money(t.netTruckPayout)}</td>
                                             </tr>
                                         ))}
                                     </React.Fragment>
@@ -214,10 +218,10 @@ export default function VendorSettlement() {
                     {/* Earned Block */}
                     <div style={{ backgroundColor: '#f0fdf4', padding: '15px', borderRadius: '8px', border: '1px solid #bbf7d0' }}>
                         <h4 style={{ margin: '0 0 10px 0', fontSize: '12px', color: '#166534', textTransform: 'uppercase' }}>Gross Earnings</h4>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px', fontSize: '13px' }}><span>Base Freight:</span> <strong>₹{formData.totalFreight.toFixed(2)}</strong></div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px', fontSize: '13px' }}><span>Halting:</span> <strong>₹{formData.totalHalting.toFixed(2)}</strong></div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px', fontSize: '13px' }}><span>ODC/Extra Size:</span> <strong>₹{formData.totalExtraSize.toFixed(2)}</strong></div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #86efac', paddingTop: '5px', fontSize: '14px' }}><span>Total Gross:</span> <strong style={{color:'#15803d'}}>₹{formData.grossAmount.toFixed(2)}</strong></div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px', fontSize: '13px' }}><span>Base Freight:</span> <strong>{money(formData.totalFreight)}</strong></div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px', fontSize: '13px' }}><span>Halting:</span> <strong>{money(formData.totalHalting)}</strong></div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px', fontSize: '13px' }}><span>ODC/Extra Size:</span> <strong>{money(formData.totalExtraSize)}</strong></div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #86efac', paddingTop: '5px', fontSize: '14px' }}><span>Total Gross:</span> <strong style={{color:'#15803d'}}>{money(formData.grossAmount)}</strong></div>
                     </div>
 
                     {/* Deductions Block */}
@@ -242,7 +246,7 @@ export default function VendorSettlement() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#1e293b', padding: '15px 25px', borderRadius: '8px' }}>
                     <div>
                         <span style={{ fontSize: '12px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 'bold' }}>Final Net Payable</span><br/>
-                        <strong style={{ fontSize: '26px', color: '#4ade80' }}>₹ {formData.netPayable.toFixed(2)}</strong>
+                        <strong style={{ fontSize: '26px', color: '#4ade80' }}>{money(formData.netPayable)}</strong>
                     </div>
                     <button type="submit" style={{ padding: '12px 24px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold', fontSize: '15px' }}>
                         Generate & Post to Ledger

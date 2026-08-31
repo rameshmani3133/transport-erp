@@ -2,6 +2,7 @@ const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 const { isSuperAdmin } = require('../lib/security');
 const { normalizeTenantKey } = require('./tenant');
+const { toRequiredInt, text } = require('../lib/coerce');
 const router = express.Router();
 const prisma = new PrismaClient();
 
@@ -48,15 +49,16 @@ router.post('/', async (req, res) => {
 
         const data = {
             tenantKey: requestedTenant,
-            companyName: req.body.companyName,
-            address: req.body.address,
-            gstNumber: req.body.gstNumber,
-            panNumber: req.body.panNumber,
-            bankName: req.body.bankName,
-            accountNumber: req.body.accountNumber,
-            ifscCode: req.body.ifscCode,
-            signatoryRole: req.body.signatoryRole || 'Authorized Signatory'
+            companyName: text(req.body.companyName),
+            address: text(req.body.address, null),
+            gstNumber: text(req.body.gstNumber, null),
+            panNumber: text(req.body.panNumber, null),
+            bankName: text(req.body.bankName, null),
+            accountNumber: text(req.body.accountNumber, null),
+            ifscCode: text(req.body.ifscCode, null),
+            signatoryRole: text(req.body.signatoryRole, 'Authorized Signatory') || 'Authorized Signatory'
         };
+        if (!data.companyName) throw new Error('Company name is required.');
 
         const profile = existing
             ? await prisma.myCompanyProfile.update({ where: { id: existing.id }, data })
@@ -92,7 +94,7 @@ router.patch('/profile/:id/restore', async (req, res) => {
         if (!isSuperAdmin(req.user)) {
             return res.status(403).json({ error: 'Only superadmins can restore companies.' });
         }
-        const id = parseInt(req.params.id, 10);
+        const id = toRequiredInt(req.params.id, 'Company');
         const profile = await prisma.myCompanyProfile.findFirst({ where: { id, deletedAt: { not: null } } });
         if (!profile) return res.status(404).json({ error: 'Deleted company not found.' });
 
@@ -112,7 +114,7 @@ router.delete('/profile/:id/permanent', async (req, res) => {
         if (!isSuperAdmin(req.user)) {
             return res.status(403).json({ error: 'Only superadmins can permanently delete companies.' });
         }
-        const id = parseInt(req.params.id, 10);
+        const id = toRequiredInt(req.params.id, 'Company');
         const profile = await prisma.myCompanyProfile.findFirst({ where: { id, deletedAt: { not: null } } });
         if (!profile) return res.status(404).json({ error: 'Deleted company not found.' });
 
@@ -131,21 +133,21 @@ router.put('/profile/:id', async (req, res) => {
         if (!isSuperAdmin(req.user)) {
             return res.status(403).json({ error: 'Only superadmins can edit companies.' });
         }
-        const id = parseInt(req.params.id, 10);
+        const id = toRequiredInt(req.params.id, 'Company');
         const existing = await prisma.myCompanyProfile.findFirst({ where: { id, deletedAt: null } });
         if (!existing) return res.status(404).json({ error: 'Company not found.' });
 
         const profile = await prisma.myCompanyProfile.update({
             where: { id },
             data: {
-                companyName: req.body.companyName,
-                address: req.body.address,
-                gstNumber: req.body.gstNumber,
-                panNumber: req.body.panNumber,
-                bankName: req.body.bankName,
-                accountNumber: req.body.accountNumber,
-                ifscCode: req.body.ifscCode,
-                signatoryRole: req.body.signatoryRole || existing.signatoryRole || 'Authorized Signatory'
+                companyName: text(req.body.companyName),
+                address: text(req.body.address, null),
+                gstNumber: text(req.body.gstNumber, null),
+                panNumber: text(req.body.panNumber, null),
+                bankName: text(req.body.bankName, null),
+                accountNumber: text(req.body.accountNumber, null),
+                ifscCode: text(req.body.ifscCode, null),
+                signatoryRole: text(req.body.signatoryRole, existing.signatoryRole || 'Authorized Signatory') || 'Authorized Signatory'
             }
         });
         res.json(profile);
@@ -160,7 +162,7 @@ router.delete('/profile/:id', async (req, res) => {
         if (!isSuperAdmin(req.user)) {
             return res.status(403).json({ error: 'Only superadmins can delete companies.' });
         }
-        const id = parseInt(req.params.id, 10);
+        const id = toRequiredInt(req.params.id, 'Company');
         const profile = await prisma.myCompanyProfile.findFirst({ where: { id, deletedAt: null } });
         if (!profile) return res.status(404).json({ error: 'Company not found.' });
 

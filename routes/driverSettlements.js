@@ -1,15 +1,157 @@
 ﻿const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 const { withTenant } = require('./tenant');
+const { ensureDriverAdvanceAccount, ensureStandardAccountingAccounts } = require('../lib/accountingAccounts');
+const { toNumber, toInt, toRequiredInt, toDate } = require('../lib/coerce');
 const router = express.Router();
 const prisma = new PrismaClient();
+
+const tripInclude = { route: true, company: true, vehicle: true, driver: true };
+
+function normalizeTripDetails(tripDetails) {
+    return [...new Map((tripDetails || [])
+        .map(td => [toInt(td.id), td])
+        .filter(([id]) => Number.isInteger(id))
+    ).entries()].map(([id, td]) => ({ ...td, id }));
+}
+
+async function applyDriverSettlement(tx, req, settlementId, payload, settlementNo) {
+    const driverId = toRequiredInt(payload.driverId, 'Driver');
+    const tripDetails = normalizeTripDetails(payload.tripDetails);
+    if (!Number.isInteger(driverId)) throw new Error('Driver is required.');
+    if (!tripDetails.length) throw new Error('Please select at least one trip to settle.');
+
+    const selectedTripIds = tripDetails.map(td => td.id);
+    const allowedSettlementFilters = [{ driverSettlementId: null }];
+    if (settlementId) allowedSettlementFilters.push({ driverSettlementId: settlementId });
+    const selectedTrips = await tx.trip.findMany({
+        where: withTenant(req, {
+            id: { in: selectedTripIds },
+            driverId,
+            OR: allowedSettlementFilters
+        })
+    });
+
+    if (selectedTrips.length !== selectedTripIds.length) {
+        throw new Error('One or more trips are already settled elsewhere or do not belong to this driver.');
+    }
+
+    if (settlementId) {
+        await tx.trip.updateMany({
+            where: withTenant(req, { driverSettlementId: settlementId, id: { notIn: selectedTripIds } }),
+            data: {
+                driverSettlementId: null,
+                rtoPc: 0,
+                parking: 0,
+                loading: 0,
+                unloading: 0,
+                otherBillsAmount: 0,
+                otherBillsDesc: null
+            }
+        });
+    }
+
+    let totalExp = 0;
+    for (const td of tripDetails) {
+        const rto = toNumber(td.rtoPc);
+        const park = toNumber(td.parking);
+        const load = toNumber(td.loading);
+        const unload = toNumber(td.unloading);
+        const otherAmt = toNumber(td.otherBillsAmount);
+
+        totalExp += rto + park + load + unload + otherAmt;
+
+        await tx.trip.updateMany({
+            where: withTenant(req, { id: td.id }),
+            data: {
+                driverSettlementId: settlementId || undefined,
+                rtoPc: rto,
+                parking: park,
+                loading: load,
+                unloading: unload,
+                otherBillsAmount: otherAmt,
+                otherBillsDesc: td.otherBillsDesc || null
+            }
+        });
+    }
+
+    const salary = toNumber(payload.driverSalary);
+    const advances = selectedTrips.reduce((sum, trip) => sum + toNumber(trip.advancePaid), 0);
+    const totalDueToDriver = totalExp + salary;
+    const netPayable = totalDueToDriver - advances;
+    const settlementDate = toDate(payload.date, new Date());
+
+    let settlement;
+    if (settlementId) {
+        settlement = await tx.driverSettlement.update({
+            where: { id: settlementId },
+            data: {
+                date: settlementDate,
+                driverId,
+                driverSalary: salary,
+                totalExpenses: totalExp,
+                advanceDeducted: advances,
+                netPayable
+            }
+        });
+        await tx.ledgerEntry.updateMany({ where: withTenant(req, { driverSettlementId: settlementId }), data: { deletedAt: new Date() } });
+    } else {
+        settlement = await tx.driverSettlement.create({
+            data: {
+                settlementNo,
+                tenantKey: req.tenantKey,
+                date: settlementDate,
+                driverId,
+                driverSalary: salary,
+                totalExpenses: totalExp,
+                advanceDeducted: advances,
+                netPayable
+            }
+        });
+        await tx.trip.updateMany({
+            where: withTenant(req, { id: { in: selectedTripIds } }),
+            data: { driverSettlementId: settlement.id }
+        });
+    }
+
+    const driver = await tx.driver.findFirst({ where: withTenant(req, { id: driverId }) });
+    const driverAcc = driver ? await ensureDriverAdvanceAccount(tx, req, driver) : null;
+    if (driverAcc && totalDueToDriver > 0) {
+        const standardAccounts = await ensureStandardAccountingAccounts(tx, req);
+        const expenseAccount = standardAccounts['Driver Salary & Trip Expense'];
+        await tx.ledgerEntry.createMany({
+            data: [
+                {
+                    date: settlementDate,
+                    tenantKey: req.tenantKey,
+                    accountId: expenseAccount.id,
+                    type: 'Dr',
+                    amount: totalDueToDriver,
+                    narration: `Driver Salary & Trip Expense - ${settlement.settlementNo}`,
+                    driverSettlementId: settlement.id
+                },
+                {
+                    date: settlementDate,
+                    tenantKey: req.tenantKey,
+                    accountId: driverAcc.id,
+                    type: 'Cr',
+                    amount: totalDueToDriver,
+                    narration: `Driver Payable - ${settlement.settlementNo}`,
+                    driverSettlementId: settlement.id
+                }
+            ]
+        });
+    }
+
+    return settlement;
+}
 
 // GET ALL DRIVER SETTLEMENTS
 router.get('/', async (req, res) => {
     try {
         const settlements = await prisma.driverSettlement.findMany({
             where: withTenant(req),
-            include: { trips: true, driver: true },
+            include: { trips: { include: tripInclude }, driver: true },
             orderBy: { id: 'desc' }
         });
         res.json(settlements);
@@ -20,89 +162,38 @@ router.get('/', async (req, res) => {
 
 // CREATE MONTHLY DRIVER SETTLEMENT & BATCH UPDATE TRIP EXPENSES
 router.post('/', async (req, res) => {
-    const { driverId, date, driverSalary, advanceDeducted, tripDetails } = req.body;
-    
     try {
         const result = await prisma.$transaction(async (tx) => {
-            // 1. Generate Settlement No
             const lastSet = await tx.driverSettlement.findFirst({ where: withTenant(req), orderBy: { id: 'desc' } });
             let nextSeq = 1;
             if (lastSet && lastSet.settlementNo && lastSet.settlementNo.startsWith('DS')) {
-                nextSeq = parseInt(lastSet.settlementNo.replace('DS', ''), 10) + 1;
+                nextSeq = toInt(lastSet.settlementNo.replace('DS', ''), 0) + 1;
             }
             const settlementNo = `DS${nextSeq.toString().padStart(3, '0')}`;
-
-            let totalExp = 0;
-            const tripsToConnect = [];
-
-            // 2. Loop through and update each individual trip with its specific expenses
-            for (const td of (tripDetails || [])) {
-                const rto = parseFloat(td.rtoPc) || 0;
-                const park = parseFloat(td.parking) || 0;
-                const load = parseFloat(td.loading) || 0;
-                const unload = parseFloat(td.unloading) || 0;
-                const otherAmt = parseFloat(td.otherBillsAmount) || 0;
-                
-                totalExp += (rto + park + load + unload + otherAmt);
-                tripsToConnect.push({ id: td.id });
-
-                await tx.trip.updateMany({
-                    where: withTenant(req, { id: td.id }),
-                    data: {
-                        rtoPc: rto,
-                        parking: park,
-                        loading: load,
-                        unloading: unload,
-                        otherBillsAmount: otherAmt,
-                        otherBillsDesc: td.otherBillsDesc || null
-                    }
-                });
-            }
-
-            // 3. Calculate Final Net Payable
-            const salary = parseFloat(driverSalary) || 0;
-            const advances = parseFloat(advanceDeducted) || 0;
-            const totalDueToDriver = totalExp + salary; 
-            const netPayable = totalDueToDriver - advances;
-
-            // 4. Create the Master Settlement Record
-            const settlement = await tx.driverSettlement.create({
-                data: {
-                    settlementNo,
-                    tenantKey: req.tenantKey,
-                    date: date ? new Date(date) : new Date(),
-                    driverId: parseInt(driverId),
-                    driverSalary: salary,
-                    totalExpenses: totalExp,
-                    advanceDeducted: advances,
-                    netPayable: netPayable,
-                    trips: { connect: tripsToConnect }
-                }
-            });
-
-            // 5. Ledger Sync: Credit the Driver's Account
-            const driverAcc = await tx.account.findFirst({ where: withTenant(req, { driverId: parseInt(driverId) }) });
-            if (driverAcc && totalDueToDriver > 0) {
-                await tx.ledgerEntry.create({
-                    data: {
-                        date: date ? new Date(date) : new Date(),
-                        tenantKey: req.tenantKey,
-                        accountId: driverAcc.id,
-                        type: 'Cr',
-                        amount: totalDueToDriver,
-                        narration: `Monthly Payroll & Bills - ${settlementNo}`,
-                        driverSettlementId: settlement.id
-                    }
-                });
-            }
-
-            return settlement;
+            return applyDriverSettlement(tx, req, null, req.body, settlementNo);
         });
 
         res.json(result);
     } catch (error) {
         console.error("Settlement Creation Error:", error);
-        res.status(400).json({ error: "Failed to process monthly settlement and trip expenses." });
+        res.status(400).json({ error: error.message || "Failed to process monthly settlement and trip expenses." });
+    }
+});
+
+// UPDATE SETTLEMENT
+router.put('/:id', async (req, res) => {
+    try {
+        const id = toRequiredInt(req.params.id, 'Driver settlement');
+        const result = await prisma.$transaction(async (tx) => {
+            const existing = await tx.driverSettlement.findFirst({ where: withTenant(req, { id }) });
+            if (!existing) throw new Error('Settlement not found.');
+            return applyDriverSettlement(tx, req, id, req.body, existing.settlementNo);
+        });
+
+        res.json(result);
+    } catch (error) {
+        console.error("Settlement Update Error:", error);
+        res.status(400).json({ error: error.message || "Failed to update settlement." });
     }
 });
 
@@ -110,17 +201,20 @@ router.post('/', async (req, res) => {
 router.delete('/:id', async (req, res) => {
     try {
         await prisma.$transaction(async (tx) => {
-            const id = parseInt(req.params.id);
-            // Delete associated ledger entries
+            const id = toRequiredInt(req.params.id, 'Driver settlement');
             await tx.ledgerEntry.updateMany({ where: withTenant(req, { driverSettlementId: id }), data: { deletedAt: new Date() } });
-            
-            // Disconnect trips (Prisma does this automatically on delete, but we explicitly reset the expense fields to keep DB clean)
             await tx.trip.updateMany({
                 where: withTenant(req, { driverSettlementId: id }),
-                data: { rtoPc: 0, parking: 0, loading: 0, unloading: 0, otherBillsAmount: 0, otherBillsDesc: null }
+                data: {
+                    driverSettlementId: null,
+                    rtoPc: 0,
+                    parking: 0,
+                    loading: 0,
+                    unloading: 0,
+                    otherBillsAmount: 0,
+                    otherBillsDesc: null
+                }
             });
-            
-            // Delete settlement
             await tx.driverSettlement.updateMany({ where: withTenant(req, { id }), data: { deletedAt: new Date() } });
         });
         res.json({ message: "Deleted successfully" });
@@ -131,4 +225,5 @@ router.delete('/:id', async (req, res) => {
 });
 
 module.exports = router;
+
 

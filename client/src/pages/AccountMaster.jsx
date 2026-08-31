@@ -1,4 +1,6 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
+
+const amount = (value) => Number(value || 0).toFixed(2);
 
 export default function AccountMaster() {
     const [accounts, setAccounts] = useState([]);
@@ -19,7 +21,7 @@ export default function AccountMaster() {
         'Asset': ['Cash/Bank', 'Sundry Debtors (Clients)', 'Loans & Advances (Asset)', 'Fixed Assets'],
         'Liability': ['Sundry Creditors (Vendors)', 'Sundry Creditors (Fuel Pump)', 'Duties & Taxes', 'Loans (Liability)'],
         'Income': ['Direct Income (Freight)', 'Indirect Income'],
-        'Expense': ['Direct Expense (Diesel/Tolls)', 'Indirect Expense (Office/Admin)']
+        'Expense': ['Direct Expense (Diesel/Tolls)', 'Vendor Freight Expense', 'Driver/Payroll Expense', 'Indirect Expense (Office/Admin)']
     };
 
     const fetchAccounts = async () => {
@@ -90,7 +92,7 @@ export default function AccountMaster() {
     };
 
     // --- DATA GROUPING ENGINE ---
-    const filteredAccounts = accounts.filter(a => a.accountName.toLowerCase().includes(searchTerm.toLowerCase()));
+    const filteredAccounts = accounts.filter(a => String(a.accountName || '').toLowerCase().includes(searchTerm.toLowerCase()));
     
     // Group accounts by their Account Group for organized viewing
     const groupedAccounts = filteredAccounts.reduce((acc, current) => {
@@ -130,7 +132,7 @@ export default function AccountMaster() {
                     </div>
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                        <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#475569' }}>Opening Balance (₹)</label>
+                        <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#475569' }}>Opening Balance (Rs.)</label>
                         <input type="number" step="any" required value={formData.openingBalance} onChange={(e) => setFormData({...formData, openingBalance: e.target.value})} style={{ padding: '10px', border: '1px solid #cbd5e1', borderRadius: '6px' }} />
                     </div>
 
@@ -195,11 +197,11 @@ export default function AccountMaster() {
                                                 </span>
                                             </td>
                                             <td style={{ padding: '10px', textAlign: 'right', color: '#64748b' }}>
-                                                ₹{acc.openingBalance.toFixed(2)} {acc.balanceType}
+                                                Rs.{amount(acc.openingBalance)} {acc.balanceType}
                                             </td>
                                             <td style={{ padding: '10px', textAlign: 'right', fontWeight: 'bold' }}>
                                                 <span style={{ color: acc.balanceType === 'Dr' && acc.currentBalance >= 0 ? '#16a34a' : (acc.balanceType === 'Cr' && acc.currentBalance >= 0 ? '#ea580c' : '#dc2626') }}>
-                                                    ₹{(acc.currentBalance ?? acc.openingBalance).toFixed(2)} {acc.balanceType}
+                                                    Rs.{amount(acc.currentBalance ?? acc.openingBalance)} {acc.balanceType}
                                                 </span>
                                             </td>
                                             <td style={{ padding: '10px', textAlign: 'center' }}>

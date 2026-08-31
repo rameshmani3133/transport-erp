@@ -27,6 +27,10 @@ model Vehicle {
   permit5YrExpiry   DateTime?
   qTaxExpiry        DateTime?
   pucExpiry         DateTime?
+  insuranceExpiry   DateTime?
+  cllExpiry         DateTime?
+  pliExpiry         DateTime?
+  explosiveExpiry   DateTime?
   fitmentDetails    String?   
   status            String?   @default("Active")
   rule18Expiry      DateTime?
@@ -39,11 +43,18 @@ model Vehicle {
   iv1Num            String?
   iv2Num            String?
   iv3Num            String?
+  sv1Expiry         DateTime?
+  sv2Expiry         DateTime?
+  sv3Expiry         DateTime?
+  iv1Expiry         DateTime?
+  iv2Expiry         DateTime?
+  iv3Expiry         DateTime?
   
   trips             Trip[]
   diesels           Diesel[]
   ledgerEntries     LedgerEntry[]
   settlements       VendorSettlement[]
+  loans             Loan[]
 
   vendorAccountId Int?
   vendorAccount   Account? @relation("VehicleVendor", fields: [vendorAccountId], references: [id])
@@ -117,6 +128,29 @@ model RouteMaster {
   trips           Trip[]
 }
 
+model Loan {
+  id              Int       @id @default(autoincrement())
+  tenantKey       String    @default("default")
+  deletedAt       DateTime?
+  loanNo          String?
+  lenderName      String
+  financeAccountId Int?
+  financeAccount  Account?  @relation("FinanceLoans", fields: [financeAccountId], references: [id])
+  vehicleId       Int?
+  vehicle         Vehicle?  @relation(fields: [vehicleId], references: [id])
+  principalAmount Float     @default(0)
+  outstandingAmount Float   @default(0)
+  emiAmount       Float     @default(0)
+  dueDay          Int?
+  nextDueDate     DateTime
+  startDate       DateTime?
+  endDate         DateTime?
+  status          String    @default("Active")
+  remarks         String?
+
+  @@unique([tenantKey, loanNo])
+}
+
 // ==========================================
 // CORE OPERATIONS: TRIP MANAGEMENT
 // ==========================================
@@ -152,6 +186,10 @@ model Trip {
   dieselAccount   Account?        @relation("DieselAccountTrips", fields: [dieselAccountId], references: [id])
   advanceAccountId Int?
   advanceAccount  Account?        @relation("AdvanceAccountTrips", fields: [advanceAccountId], references: [id])
+  clientAdvanceAccountId Int?
+  clientAdvanceAccount Account?    @relation("ClientAdvanceAccountTrips", fields: [clientAdvanceAccountId], references: [id])
+  clientAdvanceClientAccountId Int?
+  clientAdvanceClientAccount Account? @relation("ClientAdvanceClientAccountTrips", fields: [clientAdvanceClientAccountId], references: [id])
   
   dieselLiters    Float           @default(0)
   dieselRate      Float           @default(0)
@@ -159,6 +197,8 @@ model Trip {
   
   advanceDate     DateTime?
   advancePaid     Float           @default(0)
+  clientAdvanceDate   DateTime?
+  clientAdvanceAmount Float        @default(0)
   
   trailerLength   Float?
   trailerWidth    Float?
@@ -280,12 +320,18 @@ model Account {
   openingBalance  Float     @default(0)
   balanceType     String    @default("Dr") 
   
+  parentAccountId Int?
+  parentAccount   Account?  @relation("AccountHierarchy", fields: [parentAccountId], references: [id])
+  childAccounts   Account[] @relation("AccountHierarchy")
   entries         LedgerEntry[]
   dieselTrips     Trip[]    @relation("DieselAccountTrips")
   advanceTrips    Trip[]    @relation("AdvanceAccountTrips")
+  clientAdvanceTrips Trip[]  @relation("ClientAdvanceAccountTrips")
+  clientAdvanceClientTrips Trip[] @relation("ClientAdvanceClientAccountTrips")
   vendorVehicles  Vehicle[] @relation("VehicleVendor")
   dieselPumps     Diesel[]  @relation("DieselPumpAccount")
   vendorSettlements VendorSettlement[] @relation("VendorSettlements")
+  financeLoans    Loan[]    @relation("FinanceLoans")
 
   @@unique([tenantKey, accountName])
   @@unique([tenantKey, clientId])
@@ -426,20 +472,6 @@ model MyCompanyProfile {
   signatoryRole   String? 
 }
 
-model BillingMaster {
-  id              Int      @id @default(autoincrement())
-  tenantKey       String   @default("default")
-  deletedAt       DateTime?
-  companyName     String
-  address         String?
-  gstin           String?
-  pan             String?
-  bankName        String?
-  accountNumber   String?
-  ifscCode        String?
-
-  @@unique([tenantKey, companyName])
-}
 
 model User {
   id             Int                 @id @default(autoincrement())
@@ -487,4 +519,6 @@ model BackupRun {
   message     String?
   createdAt   DateTime  @default(now())
 }
+
+
 

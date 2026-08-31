@@ -1,5 +1,9 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import DataTable from '../components/DataTable';
+
+const num = (value) => Number(value || 0);
+const money = (value) => `Rs.${num(value).toFixed(2)}`;
+const dateText = (value) => value ? new Date(value).toLocaleDateString() : '-';
 
 const FormGroup = ({ label, name, type="text", value, onChange, required=false, disabled=false }) => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
@@ -28,6 +32,7 @@ export default function TripManagement() {
       date: new Date().toISOString().split('T')[0], companyId: '', routeId: '', vehicleId: '', driverId: '',
       
       dieselPumpId: '', dieselLiters: '', dieselRate: '', dieselAmount: 0,
+      clientAdvanceAccountId: '', clientAdvanceClientAccountId: '', clientAdvanceDate: '', clientAdvanceAmount: '',
       advanceAccountId: '', advanceDate: '', advancePaid: '',
       
       length: '', width: '', height: '',
@@ -37,7 +42,7 @@ export default function TripManagement() {
       haltingDays: '', clientHaltRate: '', vendorHaltRate: '',
       clientHaltingCharge: 0, vendorHaltingCharge: 0,
       
-      billWeight: '', clientCalcType: 'PerTon', clientRate: '', vendorCalcType: 'PerTon', vendorRate: '', commission: '',
+      billWeight: '', guaranteeWeight: '', netWeight: 0, clientCalcType: 'PerTon', clientRate: '', vendorCalcType: 'PerTon', vendorRate: '', commission: '',
       totalClientBill: 0, netTruckPayout: 0, status: 'In-Transit'
   };
   const [formData, setFormData] = useState(initialState);
@@ -60,8 +65,18 @@ export default function TripManagement() {
   useEffect(() => { fetchData(); }, []);
 
   // Determine if selected vehicle is an LPG Tanker to toggle UI
-  const selectedVehicle = vehicles.find(v => v.id.toString() === formData.vehicleId);
+  const selectedVehicle = vehicles.find(v => String(v.id) === String(formData.vehicleId));
+  const selectedClientLedger = accounts.find(a => a.clientId === parseInt(formData.companyId) || String(a.clientId) === String(formData.companyId));
   const isLpgTanker = selectedVehicle?.type === 'LPG Tanker';
+
+  useEffect(() => {
+      if (!selectedClientLedger) return;
+      setFormData(prev => {
+          const nextValue = String(selectedClientLedger.id);
+          if (prev.clientAdvanceClientAccountId === nextValue) return prev;
+          return { ...prev, clientAdvanceClientAccountId: nextValue };
+      });
+  }, [selectedClientLedger?.id]);
 
   // MASTER MATH ENGINE
   useEffect(() => {
@@ -81,7 +96,9 @@ export default function TripManagement() {
       let cFreight = 0, vFreight = 0;
       
       // STRICT TRUNCATION: Prevents rounding up fractional rupees (e.g., 15.559 -> 15.55)
-      const rawWeight = parseFloat(formData.billWeight) || 0;
+      const billingWeight = parseFloat(formData.billWeight) || 0;
+      const guaranteeWeight = parseFloat(formData.guaranteeWeight) || 0;
+      const rawWeight = Math.max(billingWeight, guaranteeWeight);
       const w = Math.trunc(rawWeight * 100) / 100;
       
       const cRate = parseFloat(formData.clientRate) || 0;
@@ -100,19 +117,20 @@ export default function TripManagement() {
           vendorExtraSizeCharge: vOdcCharge,
           clientHaltingCharge: cHaltCharge,
           vendorHaltingCharge: vHaltCharge,
+          netWeight: w,
           totalClientBill: cFreight + cOdcCharge + cHaltCharge,
           netTruckPayout: vFreight + vOdcCharge + vHaltCharge
       }));
   }, [
       formData.dieselLiters, formData.dieselRate, formData.odcSize, formData.clientOdcRate, formData.vendorOdcRate,
-      formData.haltingDays, formData.clientHaltRate, formData.vendorHaltRate, formData.billWeight, formData.clientRate, 
+      formData.haltingDays, formData.clientHaltRate, formData.vendorHaltRate, formData.billWeight, formData.guaranteeWeight, formData.clientRate,
       formData.vendorRate, formData.clientCalcType, formData.vendorCalcType, isLpgTanker
   ]);
 
   const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
 
   const handleRouteChange = (e) => {
-      const selectedRoute = routes.find(r => r.id.toString() === e.target.value);
+      const selectedRoute = routes.find(r => String(r.id) === String(e.target.value));
       if (selectedRoute) {
           setFormData({ ...formData, routeId: e.target.value, clientCalcType: selectedRoute.calcType, clientRate: selectedRoute.defaultRate });
       } else {
@@ -197,7 +215,7 @@ export default function TripManagement() {
 
   const filteredTrips = trips.filter(t => {
       if (filterStatus !== 'All' && t.status !== filterStatus) return false;
-      if (filterClient && t.companyId.toString() !== filterClient) return false;
+      if (filterClient && String(t.companyId || '') !== filterClient) return false;
       if (filterStartDate && new Date(t.date) < new Date(filterStartDate)) return false;
       if (filterEndDate && new Date(t.date) > new Date(filterEndDate)) return false;
       return true;
@@ -205,10 +223,12 @@ export default function TripManagement() {
 
   const columns = [
       { header: 'TRIP NO', key: 'tripNo', render: (t) => <strong>{t.tripNo}</strong> },
-      { header: 'DATE', key: 'date', render: (t) => new Date(t.date).toLocaleDateString() },
-      { header: 'ROUTE', key: 'route', render: (t) => `${t.route?.fromLocation} ➔ ${t.route?.toLocation}` },
-      { header: 'VEHICLE', key: 'vehicle', render: (t) => t.vehicle?.regNo },
-      { header: 'CLIENT BILL', key: 'totalClientBill', render: (t) => <strong style={{color:'#16a34a'}}>₹{t.totalClientBill.toFixed(2)}</strong> },
+      { header: 'DATE', key: 'date', render: (t) => dateText(t.date) },
+      { header: 'ROUTE', key: 'route', render: (t) => `${t.route?.fromLocation || '-'} to ${t.route?.toLocation || '-'}` },
+      { header: 'VEHICLE', key: 'vehicle', render: (t) => t.vehicle?.regNo || '-' },
+      { header: 'CLIENT BILL', key: 'totalClientBill', render: (t) => <strong style={{color:'#16a34a'}}>{money(t.totalClientBill)}</strong> },
+      { header: 'CLIENT ADV', key: 'clientAdvanceAmount', render: (t) => num(t.clientAdvanceAmount) > 0 ? <strong style={{color:'#2563eb'}}>{money(t.clientAdvanceAmount)}</strong> : '-' },
+      { header: 'DRV/VEN ADV', key: 'advancePaid', render: (t) => num(t.advancePaid) > 0 ? <strong style={{color:'#dc2626'}}>{money(t.advancePaid)}</strong> : '-' },
       { header: 'STATUS', key: 'status', render: (t) => (
           <select 
               value={t.status} 
@@ -277,28 +297,49 @@ export default function TripManagement() {
           </div>
 
           {/* SECTION 2: DIESEL & ADVANCES */}
-          <h3 style={{ fontSize: '14px', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px', marginBottom: '15px', color: '#334155' }}>2. Diesel & Cash Advances</h3>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', backgroundColor: '#fff7ed', padding: '15px', borderRadius: '8px', border: '1px solid #ffedd5', marginBottom: '25px' }}>
+          <h3 style={{ fontSize: '14px', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px', marginBottom: '15px', color: '#334155' }}>2. Client-Paid Diesel & Trip Advances</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', backgroundColor: '#fff7ed', padding: '15px', borderRadius: '8px', border: '1px solid #ffedd5', marginBottom: '15px' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                  <label style={{ fontSize: '11px', fontWeight: '600', color: '#ea580c' }}>Diesel Pump Account</label>
+                  <label style={{ fontSize: '11px', fontWeight: '600', color: '#ea580c' }}>Client-Paid Diesel Mapping</label>
                   <select name="dieselPumpId" value={formData.dieselPumpId} onChange={handleChange} style={{ padding: '8px', borderRadius: '4px', border: '1px solid #fed7aa', fontSize:'13px' }}>
-                      <option value="">-- Select Pump --</option>
-                      {accounts.filter(a => a.accountGroup?.includes('Fuel Pump')).map(a => <option key={a.id} value={a.id}>{a.accountName}</option>)}
+                      <option value="">-- Auto-map client/vendor diesel accounts --</option>
+                      {accounts.filter(a => a.accountGroup?.includes('Client Diesel') || a.accountGroup?.includes('Vendor Diesel')).map(a => <option key={a.id} value={a.id}>{a.accountName}</option>)}
                   </select>
               </div>
-              <FormGroup label="Diesel Liters" name="dieselLiters" type="number" value={formData.dieselLiters} onChange={handleChange} />
-              <FormGroup label="Rate / Liter (₹)" name="dieselRate" type="number" value={formData.dieselRate} onChange={handleChange} />
-              <FormGroup label="Total Diesel Amount" name="dieselAmount" type="number" value={formData.dieselAmount.toFixed(2)} disabled />
+              <FormGroup label="Diesel Liters Paid by Client" name="dieselLiters" type="number" value={formData.dieselLiters} onChange={handleChange} />
+              <FormGroup label="Rate / Liter (Rs.)" name="dieselRate" type="number" value={formData.dieselRate} onChange={handleChange} />
+              <FormGroup label="Client-Paid Diesel Amount" name="dieselAmount" type="number" value={num(formData.dieselAmount).toFixed(2)} disabled />
+          </div>
 
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '15px', backgroundColor: '#eff6ff', padding: '15px', borderRadius: '8px', border: '1px solid #bfdbfe', marginBottom: '15px' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                  <label style={{ fontSize: '11px', fontWeight: '600', color: '#ea580c' }}>Cash/Bank Advance Account</label>
-                  <select name="advanceAccountId" value={formData.advanceAccountId} onChange={handleChange} style={{ padding: '8px', borderRadius: '4px', border: '1px solid #fed7aa', fontSize:'13px' }}>
-                      <option value="">-- Select Account --</option>
+                  <label style={{ fontSize: '11px', fontWeight: '600', color: '#1d4ed8' }}>Client Advance Received In</label>
+                  <select name="clientAdvanceAccountId" value={formData.clientAdvanceAccountId} onChange={handleChange} style={{ padding: '8px', borderRadius: '4px', border: '1px solid #bfdbfe', fontSize:'13px', backgroundColor: 'white' }}>
+                      <option value="">-- Select Cash/Bank --</option>
                       {accounts.filter(a => a.accountGroup?.includes('Bank') || a.accountGroup?.includes('Cash')).map(a => <option key={a.id} value={a.id}>{a.accountName}</option>)}
                   </select>
               </div>
-              <FormGroup label="Advance Date" name="advanceDate" type="date" value={formData.advanceDate} onChange={handleChange} />
-              <FormGroup label="Advance Paid (₹)" name="advancePaid" type="number" value={formData.advancePaid} onChange={handleChange} />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                  <label style={{ fontSize: '11px', fontWeight: '600', color: '#1d4ed8' }}>Client Ledger Account (Auto Mapped)</label>
+                  <select name="clientAdvanceClientAccountId" value={formData.clientAdvanceClientAccountId} onChange={handleChange} style={{ padding: '8px', borderRadius: '4px', border: '1px solid #bfdbfe', fontSize:'13px', backgroundColor: 'white' }}>
+                      <option value="">-- Select Client Ledger --</option>
+                      {accounts.filter(a => a.accountGroup?.includes('Sundry Debtors')).map(a => <option key={a.id} value={a.id}>{a.accountName}</option>)}
+                  </select>
+              </div>
+              <FormGroup label="Client Advance Date" name="clientAdvanceDate" type="date" value={formData.clientAdvanceDate} onChange={handleChange} />
+              <FormGroup label="Client Advance Amount (Rs.)" name="clientAdvanceAmount" type="number" value={formData.clientAdvanceAmount} onChange={handleChange} />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '15px', backgroundColor: '#fef2f2', padding: '15px', borderRadius: '8px', border: '1px solid #fecaca', marginBottom: '25px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                  <label style={{ fontSize: '11px', fontWeight: '600', color: '#b91c1c' }}>Driver/Vendor Advance Paid From</label>
+                  <select name="advanceAccountId" value={formData.advanceAccountId} onChange={handleChange} style={{ padding: '8px', borderRadius: '4px', border: '1px solid #fecaca', fontSize:'13px', backgroundColor: 'white' }}>
+                      <option value="">-- Select Cash/Bank --</option>
+                      {accounts.filter(a => a.accountGroup?.includes('Bank') || a.accountGroup?.includes('Cash')).map(a => <option key={a.id} value={a.id}>{a.accountName}</option>)}
+                  </select>
+              </div>
+              <FormGroup label="Driver/Vendor Advance Date" name="advanceDate" type="date" value={formData.advanceDate} onChange={handleChange} />
+              <FormGroup label="Driver/Vendor Advance Amount (Rs.)" name="advancePaid" type="number" value={formData.advancePaid} onChange={handleChange} />
           </div>
 
           {/* SECTION 3: FREIGHT & ADJUSTMENTS */}
@@ -316,19 +357,21 @@ export default function TripManagement() {
 
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px', backgroundColor: '#f8fafc', padding: '15px', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '15px' }}>
                       <FormGroup label="Extra Size (ODC ft)" name="odcSize" type="number" value={formData.odcSize} onChange={handleChange} />
-                      <FormGroup label="Client ODC Rate (₹)" name="clientOdcRate" type="number" value={formData.clientOdcRate} onChange={handleChange} />
-                      <FormGroup label="Vendor ODC Rate (₹)" name="vendorOdcRate" type="number" value={formData.vendorOdcRate} onChange={handleChange} />
+                      <FormGroup label="Client ODC Rate (Rs.)" name="clientOdcRate" type="number" value={formData.clientOdcRate} onChange={handleChange} />
+                      <FormGroup label="Vendor ODC Rate (Rs.)" name="vendorOdcRate" type="number" value={formData.vendorOdcRate} onChange={handleChange} />
                       
                       <FormGroup label="Halting Days" name="haltingDays" type="number" value={formData.haltingDays} onChange={handleChange} />
-                      <FormGroup label="Client Halt Rate (₹)" name="clientHaltRate" type="number" value={formData.clientHaltRate} onChange={handleChange} />
-                      <FormGroup label="Vendor Halt Rate (₹)" name="vendorHaltRate" type="number" value={formData.vendorHaltRate} onChange={handleChange} />
+                      <FormGroup label="Client Halt Rate (Rs.)" name="clientHaltRate" type="number" value={formData.clientHaltRate} onChange={handleChange} />
+                      <FormGroup label="Vendor Halt Rate (Rs.)" name="vendorHaltRate" type="number" value={formData.vendorHaltRate} onChange={handleChange} />
                   </div>
               </>
           )}
 
           {/* Billing Weight is always needed */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px', marginBottom: '25px' }}>
-              <FormGroup label="Bill Weight (Tons)" name="billWeight" type="number" value={formData.billWeight} onChange={handleChange} required />
+              <FormGroup label="Billing Weight (Tons)" name="billWeight" type="number" value={formData.billWeight} onChange={handleChange} required />
+              <FormGroup label="Guarantee Weight (Tons)" name="guaranteeWeight" type="number" value={formData.guaranteeWeight} onChange={handleChange} />
+              <FormGroup label="Net Weight (Tons)" name="netWeight" type="number" value={Number(formData.netWeight || 0).toFixed(2)} onChange={handleChange} disabled />
               
               <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
                   <label style={{ fontSize: '11px', fontWeight: '600', color: '#64748b' }}>Client Formula</label>
@@ -337,7 +380,7 @@ export default function TripManagement() {
                       <option value="Fixed">Fixed Amount</option>
                   </select>
               </div>
-              <FormGroup label="Client Rate (₹)" name="clientRate" type="number" value={formData.clientRate} onChange={handleChange} />
+              <FormGroup label="Client Rate (Rs.)" name="clientRate" type="number" value={formData.clientRate} onChange={handleChange} />
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
                   <label style={{ fontSize: '11px', fontWeight: '600', color: '#64748b' }}>Vendor Formula</label>
@@ -346,9 +389,9 @@ export default function TripManagement() {
                       <option value="Fixed">Fixed Amount</option>
                   </select>
               </div>
-              <FormGroup label="Vendor Rate (₹)" name="vendorRate" type="number" value={formData.vendorRate} onChange={handleChange} />
+              <FormGroup label="Vendor Rate (Rs.)" name="vendorRate" type="number" value={formData.vendorRate} onChange={handleChange} />
               
-              <FormGroup label="Trip Commission (₹)" name="commission" type="number" value={formData.commission} onChange={handleChange} />
+              <FormGroup label="Trip Commission (Rs.)" name="commission" type="number" value={formData.commission} onChange={handleChange} />
           </div>
 
           {/* TOTALS BAR */}
@@ -356,11 +399,11 @@ export default function TripManagement() {
               <div style={{ display: 'flex', gap: '30px' }}>
                   <div>
                       <span style={{ fontSize: '11px', color: '#166534', fontWeight: 'bold', textTransform: 'uppercase' }}>Total Client Bill</span><br/>
-                      <strong style={{ fontSize: '20px', color: '#15803d' }}>₹ {formData.totalClientBill.toFixed(2)}</strong>
+                      <strong style={{ fontSize: '20px', color: '#15803d' }}>{money(formData.totalClientBill)}</strong>
                   </div>
                   <div>
                       <span style={{ fontSize: '11px', color: '#991b1b', fontWeight: 'bold', textTransform: 'uppercase' }}>Gross Vendor Payout</span><br/>
-                      <strong style={{ fontSize: '20px', color: '#b91c1c' }}>₹ {formData.netTruckPayout.toFixed(2)}</strong>
+                      <strong style={{ fontSize: '20px', color: '#b91c1c' }}>{money(formData.netTruckPayout)}</strong>
                   </div>
               </div>
               
@@ -422,3 +465,4 @@ export default function TripManagement() {
     </div>
   );
 }
+

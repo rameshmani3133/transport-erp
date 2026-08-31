@@ -17,7 +17,6 @@ const tables = [
   'VendorSettlement',
   'DriverSettlement',
   'MyCompanyProfile',
-  'BillingMaster',
 ];
 
 async function columnExists(tableName) {

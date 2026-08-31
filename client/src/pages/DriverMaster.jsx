@@ -13,7 +13,9 @@ export default function DriverMaster() {
   const [drivers, setDrivers] = useState([]);
   const [editId, setEditId] = useState(null);
 
-  const initialState = {
+const dateText = (value) => value ? new Date(value).toLocaleDateString() : '-';
+
+const initialState = {
       name: '', licenseNo: '', licenseExpiry: '', hazmatLicense: false, hazmatExpiry: '',
       address: '', phone: '', aadhaarNumber: '', status: 'Active'
   };
@@ -67,7 +69,7 @@ export default function DriverMaster() {
   const columns = [
       { header: 'Name', key: 'name', render: (d) => <strong>{d.name}</strong> },
       { header: 'License No', key: 'licenseNo', render: (d) => d.licenseNo },
-      { header: 'License Expiry', key: 'licenseExpiry', render: (d) => new Date(d.licenseExpiry).toLocaleDateString() },
+      { header: 'License Expiry', key: 'licenseExpiry', render: (d) => dateText(d.licenseExpiry) },
       { header: 'Phone', key: 'phone', render: (d) => d.phone },
       { header: 'Status', key: 'status', render: (d) => d.status },
       { header: 'Actions', key: 'actions', render: (d) => (

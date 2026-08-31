@@ -1,6 +1,8 @@
 ﻿const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 const { withTenant } = require('./tenant');
+const { ensureClientLedgerAccount } = require('../lib/accountingAccounts');
+const { toRequiredInt, text } = require('../lib/coerce');
 const router = express.Router();
 const prisma = new PrismaClient();
 
@@ -19,18 +21,29 @@ router.get('/', async (req, res) => {
     }
 });
 
+async function ensureParentCompanyLedger(tx, req, companyId) {
+    const company = await tx.clientCompany.findFirst({ where: withTenant(req, { id: companyId }) });
+    if (!company) throw new Error('Selected client company was not found.');
+    await ensureClientLedgerAccount(tx, req, company);
+}
+
 // CREATE NEW BILLING LOCATION
 router.post('/', async (req, res) => {
     try {
-        const newLocation = await prisma.billingLocation.create({
-            data: {
-                locationName: req.body.locationName,
-                tenantKey: req.tenantKey,
-                address: req.body.address || null,
-                gstNumber: req.body.gstNumber || null,
-                invoiceFormat: req.body.invoiceFormat || 'Standard',
-                companyId: parseInt(req.body.companyId)
-            }
+        const newLocation = await prisma.$transaction(async (tx) => {
+            const companyId = toRequiredInt(req.body.companyId, 'Client company');
+            await ensureParentCompanyLedger(tx, req, companyId);
+            if (!text(req.body.locationName)) throw new Error('Billing location is required.');
+            return tx.billingLocation.create({
+                data: {
+                    locationName: text(req.body.locationName),
+                    tenantKey: req.tenantKey,
+                    address: req.body.address || null,
+                    gstNumber: req.body.gstNumber || null,
+                    invoiceFormat: req.body.invoiceFormat || 'Standard',
+                    companyId
+                }
+            });
         });
         res.json(newLocation);
     } catch (error) {
@@ -42,15 +55,20 @@ router.post('/', async (req, res) => {
 // UPDATE BILLING LOCATION
 router.put('/:id', async (req, res) => {
     try {
-        const updatedLocation = await prisma.billingLocation.update({
-            where: withTenant(req, { id: parseInt(req.params.id) }),
-            data: {
-                locationName: req.body.locationName,
-                address: req.body.address || null,
-                gstNumber: req.body.gstNumber || null,
-                invoiceFormat: req.body.invoiceFormat || 'Standard',
-                companyId: parseInt(req.body.companyId)
-            }
+        const updatedLocation = await prisma.$transaction(async (tx) => {
+            const companyId = toRequiredInt(req.body.companyId, 'Client company');
+            await ensureParentCompanyLedger(tx, req, companyId);
+            if (!text(req.body.locationName)) throw new Error('Billing location is required.');
+            return tx.billingLocation.update({
+                where: withTenant(req, { id: toRequiredInt(req.params.id, 'Billing location') }),
+                data: {
+                    locationName: text(req.body.locationName),
+                    address: req.body.address || null,
+                    gstNumber: req.body.gstNumber || null,
+                    invoiceFormat: req.body.invoiceFormat || 'Standard',
+                    companyId
+                }
+            });
         });
         res.json(updatedLocation);
     } catch (error) {
@@ -62,7 +80,7 @@ router.put('/:id', async (req, res) => {
 // DELETE BILLING LOCATION
 router.delete('/:id', async (req, res) => {
     try {
-        await prisma.billingLocation.updateMany({ where: withTenant(req, { id: parseInt(req.params.id) }), data: { deletedAt: new Date() } });
+        await prisma.billingLocation.updateMany({ where: withTenant(req, { id: toRequiredInt(req.params.id, 'Billing location') }), data: { deletedAt: new Date() } });
         res.json({ message: "Location deleted successfully." });
     } catch (error) {
         console.error("Location Delete Error:", error);
@@ -71,4 +89,3 @@ router.delete('/:id', async (req, res) => {
 });
 
 module.exports = router;
-

@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const cors = require('cors');
 const path = require('path'); // <-- ADDED: Required for serving frontend files
 const { PrismaClient } = require('@prisma/client');
@@ -29,7 +29,6 @@ const ledgerRouter = require('./routes/ledger');
 const invoicesRouter = require('./routes/invoices');
 const locationsRouter = require('./routes/locations');
 const companiesRouter = require('./routes/companies');
-const billingRouter = require('./routes/billing');
 const vehiclesRouter = require('./routes/vehicles');
 const driversRouter = require('./routes/drivers');
 const routesMasterRouter = require('./routes/routesMaster');
@@ -38,6 +37,9 @@ const settlementsRouter = require('./routes/settlements');
 const reportsRouter = require('./routes/reports');
 const myCompanyRouter = require('./routes/myCompany');
 const adminRouter = require('./routes/admin'); 
+const paymentsRouter = require('./routes/payments');
+const loansRouter = require('./routes/loans');
+const remindersRouter = require('./routes/reminders');
 
 // ==========================================
 // MOUNT API ROUTES
@@ -47,7 +49,6 @@ app.use('/api/ledger', ledgerRouter);
 app.use('/api/invoices', invoicesRouter);
 app.use('/api/locations', locationsRouter);
 app.use('/api/companies', companiesRouter);
-app.use('/api/billing', billingRouter);
 app.use('/api/vehicles', vehiclesRouter);
 app.use('/api/drivers', driversRouter);
 app.use('/api/routes-master', routesMasterRouter);
@@ -56,6 +57,9 @@ app.use('/api/settlements', settlementsRouter);
 app.use('/api/reports', reportsRouter);
 app.use('/api/my-company', myCompanyRouter);
 app.use('/api/admin', adminRouter); 
+app.use('/api/payments', paymentsRouter);
+app.use('/api/loans', loansRouter);
+app.use('/api/reminders', remindersRouter);
 app.use('/api/driver-settlements', require('./routes/driverSettlements'));
 
 
@@ -85,3 +89,4 @@ start().catch((error) => {
     console.error('Startup failed:', error);
     process.exit(1);
 });
+

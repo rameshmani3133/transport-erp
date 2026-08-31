@@ -60,9 +60,9 @@ export default function RouteMaster() {
 
   const columns = [
       { header: 'Client', key: 'company.companyName', render: (r) => r.company?.companyName },
-      { header: 'Route', key: 'route', render: (r) => <strong>{r.fromLocation} ➔ {r.toLocation}</strong> },
+      { header: 'Route', key: 'route', render: (r) => <strong>{r.fromLocation} to {r.toLocation}</strong> },
       { header: 'RTKM', key: 'rtkm', render: (r) => `${r.rtkm} KM` },
-      { header: 'Default Rate', key: 'defaultRate', render: (r) => `₹${r.defaultRate} (${r.calcType})` },
+      { header: 'Default Rate', key: 'defaultRate', render: (r) => `Rs.${r.defaultRate} (${r.calcType})` },
       { header: 'Actions', key: 'actions', render: (r) => (
           <div style={{display:'flex', gap:'10px'}}>
               <button onClick={() => handleEdit(r)} style={{color:'#3b82f6', background:'none', border:'none', cursor:'pointer'}}>Edit</button>
@@ -95,7 +95,7 @@ export default function RouteMaster() {
                       <option value="Fixed">Fixed Freight</option>
                   </select>
               </div>
-              <FormGroup label="Default Rate (₹)" name="defaultRate" type="number" value={formData.defaultRate} onChange={handleChange} required />
+              <FormGroup label="Default Rate (Rs.)" name="defaultRate" type="number" value={formData.defaultRate} onChange={handleChange} required />
           </div>
 
           <button type="submit" style={{ padding: '10px 20px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>

@@ -1,11 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import DataTable from '../components/DataTable';
 
+const emptyTotals = { totalExp: 0, totalAdvances: 0, netPayable: 0 };
+const num = (value) => Number(value || 0);
+const money = (value) => `Rs.${num(value).toFixed(2)}`;
+const dateText = (value) => value ? new Date(value).toLocaleDateString() : '-';
+
+function formatDateInput(value) {
+    if (!value) return new Date().toISOString().split('T')[0];
+    return new Date(value).toISOString().split('T')[0];
+}
+
 export default function DriverSettlement() {
     const [settlements, setSettlements] = useState([]);
     const [drivers, setDrivers] = useState([]);
     const [allUnsettledTrips, setAllUnsettledTrips] = useState([]);
     const [selectedDriverId, setSelectedDriverId] = useState('');
+    const [editId, setEditId] = useState(null);
+    const [editNo, setEditNo] = useState('');
     
     // Core Form State
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
@@ -16,7 +28,7 @@ export default function DriverSettlement() {
     const [tripExpenses, setTripExpenses] = useState({});
     
     // Derived Totals
-    const [totals, setTotals] = useState({ totalExp: 0, totalAdvances: 0, netPayable: 0 });
+    const [totals, setTotals] = useState(emptyTotals);
 
     const fetchData = async () => {
         try {
@@ -34,8 +46,19 @@ export default function DriverSettlement() {
 
     useEffect(() => { fetchData(); }, []);
 
-    // Filter unsettled trips belonging to the chosen driver
-    const driverTrips = allUnsettledTrips.filter(t => t.driverId?.toString() === selectedDriverId);
+    const resetForm = () => {
+        setEditId(null);
+        setEditNo('');
+        setSelectedTripIds([]);
+        setSelectedDriverId('');
+        setDate(new Date().toISOString().split('T')[0]);
+        setDriverSalary('');
+        setTripExpenses({});
+        setTotals(emptyTotals);
+    };
+
+    // Filter unsettled trips belonging to the chosen driver. While editing, the saved batch trips are injected into this list.
+    const driverTrips = allUnsettledTrips.filter(t => String(t.driverId || '') === selectedDriverId);
     const allDisplayedSelected = driverTrips.length > 0 && driverTrips.every(t => selectedTripIds.includes(t.id));
 
     // Handle Checkbox Toggles
@@ -67,7 +90,7 @@ export default function DriverSettlement() {
         selectedTripIds.forEach(id => {
             // Find the trip to get its advance
             const trip = allUnsettledTrips.find(t => t.id === id);
-            advSum += parseFloat(trip?.advancePaid || 0);
+            advSum += num(trip?.advancePaid);
 
             // Sum up the inputs from the spreadsheet row
             const ex = tripExpenses[id] || {};
@@ -78,7 +101,7 @@ export default function DriverSettlement() {
                       (parseFloat(ex.otherBillsAmount) || 0);
         });
 
-        const salary = parseFloat(driverSalary) || 0;
+        const salary = num(driverSalary);
         const net = (expSum + salary) - advSum;
 
         setTotals({ totalExp: expSum, totalAdvances: advSum, netPayable: net });
@@ -111,25 +134,54 @@ export default function DriverSettlement() {
         };
 
         try {
-            const res = await fetch('/api/driver-settlements', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+            const res = await fetch(editId ? `/api/driver-settlements/${editId}` : '/api/driver-settlements', {
+                method: editId ? 'PUT' : 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
             });
-            if (!res.ok) throw new Error("Failed to save payroll.");
-            
-            alert("Payroll Saved! Expenses applied to individual trips & Ledger Updated.");
-            
-            // Reset Form
-            setSelectedTripIds([]);
-            setSelectedDriverId('');
-            setDriverSalary('');
-            setTripExpenses({});
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || "Failed to save payroll.");
+            alert(editId ? "Payroll batch updated." : "Payroll Saved! Expenses applied to individual trips & Ledger Updated.");
+            resetForm();
             fetchData();
         } catch (error) { alert(error.message); }
     };
 
+    const handleEdit = (settlement) => {
+        const trips = settlement.trips || [];
+        const expenses = {};
+        for (const trip of trips) {
+            expenses[trip.id] = {
+                rtoPc: trip.rtoPc || '',
+                parking: trip.parking || '',
+                loading: trip.loading || '',
+                unloading: trip.unloading || '',
+                otherBillsAmount: trip.otherBillsAmount || '',
+                otherBillsDesc: trip.otherBillsDesc || ''
+            };
+        }
+
+        setAllUnsettledTrips(prev => {
+            const existingIds = new Set(prev.map(t => t.id));
+            const missing = trips.filter(t => !existingIds.has(t.id));
+            return [...missing, ...prev];
+        });
+        setEditId(settlement.id);
+        setEditNo(settlement.settlementNo);
+        setSelectedDriverId(String(settlement.driverId));
+        setDate(formatDateInput(settlement.date));
+        setDriverSalary(String(settlement.driverSalary || ''));
+        setSelectedTripIds(trips.map(t => t.id));
+        setTripExpenses(expenses);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
     const handleDelete = async (id) => {
         if (!(await window.confirmSnackbar("Delete this settlement? Ledger entries will reverse and trip expenses will reset to zero."))) return;
-        await fetch(`/api/driver-settlements/${id}`, { method: 'DELETE' });
+        const res = await fetch(`/api/driver-settlements/${id}`, { method: 'DELETE' });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return alert(data.error || 'Failed to delete settlement.');
+        if (editId === id) resetForm();
         fetchData();
     };
 
@@ -141,13 +193,18 @@ export default function DriverSettlement() {
 
     const columns = [
         { header: 'No.', key: 'settlementNo', render: s => <strong>{s.settlementNo}</strong> },
-        { header: 'Date', key: 'date', render: s => new Date(s.date).toLocaleDateString() },
-        { header: 'Driver', key: 'driver', render: s => <strong>{s.driver?.name}</strong> },
+        { header: 'Date', key: 'date', render: s => dateText(s.date) },
+        { header: 'Driver', key: 'driver', render: s => <strong>{s.driver?.name || '-'}</strong> },
         { header: 'Trips Settled', key: 'trips', render: s => `${s.trips?.length || 0} Trips` },
-        { header: 'Total Salary', key: 'salary', render: s => `₹${s.driverSalary.toFixed(2)}` },
-        { header: 'Total Advance', key: 'advance', render: s => `₹${s.advanceDeducted.toFixed(2)}` },
-        { header: 'Net Payout', key: 'net', render: s => <strong style={{color: s.netPayable >= 0 ? '#16a34a' : '#ea580c'}}>₹{s.netPayable.toFixed(2)}</strong> },
-        { header: 'Actions', key: 'actions', render: s => <button onClick={() => handleDelete(s.id)} style={{color:'red', background:'none', border:'none', cursor:'pointer', fontWeight:'bold'}}>Del</button> }
+        { header: 'Total Salary', key: 'salary', render: s => money(s.driverSalary) },
+        { header: 'Total Advance', key: 'advance', render: s => money(s.advanceDeducted) },
+        { header: 'Net Payout', key: 'net', render: s => <strong style={{color: num(s.netPayable) >= 0 ? '#16a34a' : '#ea580c'}}>{money(s.netPayable)}</strong> },
+        { header: 'Actions', key: 'actions', render: s => (
+            <div style={{ display: 'flex', gap: '10px' }}>
+                <button type="button" onClick={() => handleEdit(s)} style={{color:'#3b82f6', background:'none', border:'none', cursor:'pointer', fontWeight:'bold'}}>Edit</button>
+                <button type="button" onClick={() => handleDelete(s.id)} style={{color:'red', background:'none', border:'none', cursor:'pointer', fontWeight:'bold'}}>Del</button>
+            </div>
+        ) }
     ];
 
     return (
@@ -155,12 +212,17 @@ export default function DriverSettlement() {
             <h2 style={{ color: '#1e293b', marginBottom: '20px' }}>Driver Monthly Payroll & Trip Settlement</h2>
 
             <form onSubmit={handleSubmit} style={{ backgroundColor: 'white', padding: '25px', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', marginBottom: '40px' }}>
+                {editId && (
+                    <div style={{ backgroundColor: '#eff6ff', border: '1px solid #bfdbfe', color: '#1e40af', padding: '12px', borderRadius: '6px', marginBottom: '20px', fontWeight: 'bold' }}>
+                        Editing saved payroll batch {editNo}
+                    </div>
+                )}
                 
                 {/* 1. SELECTION */}
                 <div style={{ display: 'flex', gap: '20px', marginBottom: '25px' }}>
                     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '5px' }}>
                         <label style={{ fontSize: '12px', fontWeight: 'bold', color: '#475569' }}>1. Select Driver</label>
-                        <select value={selectedDriverId} onChange={(e) => { setSelectedDriverId(e.target.value); setSelectedTripIds([]); }} required style={{ padding: '10px', borderRadius: '6px', border: '2px solid #cbd5e1' }}>
+                        <select value={selectedDriverId} onChange={(e) => { setSelectedDriverId(e.target.value); setSelectedTripIds([]); setTripExpenses({}); }} required style={{ padding: '10px', borderRadius: '6px', border: '2px solid #cbd5e1' }}>
                             <option value="">-- Choose Driver --</option>
                             {drivers.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
                         </select>
@@ -202,9 +264,9 @@ export default function DriverSettlement() {
                                             <td style={{ padding: '10px' }}><input type="checkbox" checked={isSelected} onChange={() => handleTripToggle(t.id)} style={{cursor:'pointer'}} /></td>
                                             <td style={{ padding: '10px' }}>
                                                 <strong>{t.tripNo}</strong><br/>
-                                                <span style={{fontSize:'10px', color:'#64748b'}}>{t.route?.toLocation}</span>
+                                                <span style={{fontSize:'10px', color:'#64748b'}}>{t.route?.toLocation || 'Route not set'}</span>
                                             </td>
-                                            <td style={{ padding: '10px', fontWeight: 'bold', color: '#ef4444' }}>₹{t.advancePaid}</td>
+                                            <td style={{ padding: '10px', fontWeight: 'bold', color: '#ef4444' }}>{money(t.advancePaid)}</td>
                                             
                                             {/* Inputs unlock only when checkbox is selected */}
                                             <td style={{ padding: '8px' }}><input type="number" step="any" value={ex.rtoPc || ''} onChange={e => handleExpenseChange(t.id, 'rtoPc', e.target.value)} disabled={!isSelected} style={inputStyle(!isSelected)} /></td>
@@ -226,29 +288,34 @@ export default function DriverSettlement() {
                     <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
                         
                         <div style={{ marginRight: '30px' }}>
-                            <label style={{ fontSize: '11px', fontWeight: 'bold', color: '#94a3b8', textTransform: 'uppercase' }}>Monthly Salary (₹)</label><br/>
+                            <label style={{ fontSize: '11px', fontWeight: 'bold', color: '#94a3b8', textTransform: 'uppercase' }}>Monthly Salary (Rs.)</label><br/>
                             <input type="number" required value={driverSalary} onChange={e => setDriverSalary(e.target.value)} 
                                 style={{ padding: '10px', fontSize: '16px', fontWeight: 'bold', borderRadius: '4px', border: '1px solid #475569', backgroundColor: '#334155', color: 'white', width: '150px', marginTop: '5px' }} />
                         </div>
 
                         <div style={{ borderLeft: '1px solid #475569', paddingLeft: '20px' }}>
                             <span style={{ fontSize: '11px', color: '#94a3b8', textTransform: 'uppercase' }}>Sum of Bills + Salary</span><br/>
-                            <strong style={{ fontSize: '18px' }}>₹ {(totals.totalExp + (parseFloat(driverSalary)||0)).toFixed(2)}</strong>
+                            <strong style={{ fontSize: '18px' }}>{money(num(totals.totalExp) + num(driverSalary))}</strong>
                         </div>
                         <div style={{ paddingLeft: '20px' }}>
                             <span style={{ fontSize: '11px', color: '#ef4444', textTransform: 'uppercase' }}>(-) Trip Advances</span><br/>
-                            <strong style={{ fontSize: '18px', color: '#fca5a5' }}>₹ {totals.totalAdvances.toFixed(2)}</strong>
+                            <strong style={{ fontSize: '18px', color: '#fca5a5' }}>{money(totals.totalAdvances)}</strong>
                         </div>
                     </div>
                     
                     <div style={{ textAlign: 'right' }}>
                         <span style={{ fontSize: '12px', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 'bold' }}>Final Net Settlement</span><br/>
-                        <strong style={{ fontSize: '26px', color: totals.netPayable >= 0 ? '#4ade80' : '#fb923c' }}>
-                            {totals.netPayable >= 0 ? `Pay Driver: ₹${totals.netPayable.toFixed(2)}` : `Driver Returns: ₹${Math.abs(totals.netPayable).toFixed(2)}`}
+                        <strong style={{ fontSize: '26px', color: num(totals.netPayable) >= 0 ? '#4ade80' : '#fb923c' }}>
+                            {num(totals.netPayable) >= 0 ? `Pay Driver: ${money(totals.netPayable)}` : `Driver Returns: ${money(Math.abs(num(totals.netPayable)))}`}
                         </strong>
-                        <div style={{ marginTop: '10px' }}>
+                        <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+                            {editId && (
+                                <button type="button" onClick={resetForm} style={{ padding: '12px 24px', backgroundColor: '#64748b', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
+                                    Cancel Edit
+                                </button>
+                            )}
                             <button type="submit" style={{ padding: '12px 24px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
-                                Save Payroll & Ledger
+                                {editId ? 'Update Payroll & Ledger' : 'Save Payroll & Ledger'}
                             </button>
                         </div>
                     </div>

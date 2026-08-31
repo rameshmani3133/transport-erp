@@ -1,56 +1,47 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useEffect, useMemo, useState } from 'react';
 import DataTable from '../components/DataTable';
 
-// --- Reusable KPI Components ---
-const KpiCard = ({ title, value, color, subtitle }) => (
-    <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', borderLeft: `5px solid ${color}`, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-        <h3 style={{ margin: 0, fontSize: '13px', color: '#64748b', textTransform: 'uppercase', fontWeight: 'bold' }}>{title}</h3>
-        <p style={{ margin: '10px 0', fontSize: '28px', color: '#1e293b', fontWeight: 'bold' }}>{value}</p>
-        {subtitle && <span style={{ fontSize: '12px', color: '#94a3b8', fontWeight: '600' }}>{subtitle}</span>}
+const money = (value) => `Rs.${Number(value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const pct = (value) => `${Number(value || 0).toFixed(1)}%`;
+const today = () => new Date().toISOString().split('T')[0];
+const dateText = (value) => value ? new Date(value).toLocaleDateString() : '-';
+const htmlEscape = (value) => String(value ?? '').replace(/[&<>]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch]));
+
+const StatCard = ({ label, value, tone = '#2563eb', sub }) => (
+    <div style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '18px', boxShadow: '0 10px 28px rgba(15,23,42,0.06)' }}>
+        <div style={{ fontSize: '12px', color: '#64748b', fontWeight: 800, textTransform: 'uppercase' }}>{label}</div>
+        <div style={{ fontSize: '26px', color: tone, fontWeight: 900, marginTop: '8px' }}>{value}</div>
+        {sub && <div style={{ fontSize: '12px', color: '#64748b', marginTop: '6px' }}>{sub}</div>}
     </div>
 );
 
-const ReportSection = ({ title, children }) => (
-    <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', display: 'flex', flexDirection: 'column', gap: '15px' }}>
-        <h3 style={{ margin: 0, fontSize: '16px', color: '#334155', borderBottom: '2px solid #f1f5f9', paddingBottom: '10px' }}>{title}</h3>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-            {children}
+const Section = ({ title, children }) => (
+    <section style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '18px', boxShadow: '0 10px 28px rgba(15,23,42,0.06)' }}>
+        <h3 style={{ margin: '0 0 14px', color: '#0f172a', fontSize: '16px' }}>{title}</h3>
+        {children}
+    </section>
+);
+
+const Bar = ({ label, value, max, color }) => (
+    <div style={{ display: 'grid', gap: '6px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#475569', fontWeight: 700 }}><span>{label}</span><span>{money(value)}</span></div>
+        <div style={{ height: '9px', background: '#f1f5f9', borderRadius: '999px', overflow: 'hidden' }}>
+            <div style={{ width: `${max > 0 ? Math.min(100, (value / max) * 100) : 0}%`, height: '100%', background: color }} />
         </div>
     </div>
 );
 
-const StatRow = ({ label, value, valColor = '#1e293b' }) => (
-    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px dashed #e2e8f0' }}>
-        <span style={{ fontSize: '13px', color: '#475569', fontWeight: '600' }}>{label}</span>
-        <span style={{ fontSize: '14px', color: valColor, fontWeight: 'bold' }}>{value}</span>
-    </div>
-);
-
-const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-    '"': '&quot;',
-    "'": '&#39;'
-}[char]));
-
 export default function Reports() {
-    const [activeTab, setActiveTab] = useState('summary'); 
-    
-    const [tripFilters, setTripFilters] = useState({ clientId: '', routeLoc: '', startDate: '', endDate: '' });
-    const [vehicleFilters, setVehicleFilters] = useState({ ownership: 'All', status: 'All' });
-    const [auditFilters, setAuditFilters] = useState({ group: 'All' });
-
-    const [data, setData] = useState({ trips: [], invoices: [], settlements: [], accounts: [], vehicles: [], clients: [], loading: true });
+    const [activeTab, setActiveTab] = useState('summary');
+    const [filters, setFilters] = useState({ clientId: '', startDate: '', endDate: '', group: 'All' });
+    const [data, setData] = useState({ trips: [], invoices: [], settlements: [], accounts: [], vehicles: [], clients: [], payments: [], loading: true });
 
     useEffect(() => {
         const fetchAllData = async () => {
             try {
-                const [tRes, iRes, sRes, aRes, vRes, cRes] = await Promise.all([
-                    fetch('/api/trips'), fetch('/api/invoices'), fetch('/api/settlements'),
-                    fetch('/api/ledger/accounts'), fetch('/api/vehicles'), fetch('/api/companies')
+                const [tRes, iRes, sRes, aRes, vRes, cRes, pRes] = await Promise.all([
+                    fetch('/api/trips'), fetch('/api/invoices'), fetch('/api/settlements'), fetch('/api/ledger/accounts'), fetch('/api/vehicles'), fetch('/api/companies'), fetch('/api/payments')
                 ]);
-
                 setData({
                     trips: tRes.ok ? await tRes.json() : [],
                     invoices: iRes.ok ? await iRes.json() : [],
@@ -58,246 +49,151 @@ export default function Reports() {
                     accounts: aRes.ok ? await aRes.json() : [],
                     vehicles: vRes.ok ? await vRes.json() : [],
                     clients: cRes.ok ? await cRes.json() : [],
+                    payments: pRes.ok ? await pRes.json() : [],
                     loading: false
                 });
-            } catch (error) { console.error(error); setData(prev => ({ ...prev, loading: false })); }
+            } catch (error) {
+                console.error(error);
+                setData(prev => ({ ...prev, loading: false }));
+            }
         };
         fetchAllData();
     }, []);
 
-    if (data.loading) return <div style={{ padding: '40px', fontSize: '18px', fontWeight: 'bold' }}>Loading Reporting Engine...</div>;
-
-    // ==========================================
-    // 1. SUMMARY TAB MATH
-    // ==========================================
-    const totalInvoiced = data.invoices.reduce((sum, inv) => sum + (inv.grandTotal || 0), 0);
-    const totalTax = data.invoices.reduce((sum, inv) => sum + (inv.cgst || 0) + (inv.sgst || 0) + (inv.igst || 0), 0);
-    const debtors = data.accounts.filter(a => a.accountGroup?.includes('Sundry Debtors'));
-    const totalReceivables = debtors.reduce((sum, a) => sum + (a.currentBalance || 0), 0);
-    const creditors = data.accounts.filter(a => a.accountGroup?.includes('Sundry Creditors'));
-    const totalPayables = creditors.reduce((sum, a) => sum + Math.abs(a.currentBalance || 0), 0);
-    const totalTrips = data.trips.length;
-    const totalFreightGenerated = data.trips.reduce((sum, t) => sum + (t.totalClientBill || 0), 0);
-
-    // ==========================================
-    // 2. DATA GRIDS & EXPORT DEFINITIONS
-    // ==========================================
-    
-    // A. Trips
-    const filteredTrips = data.trips.filter(t => {
-        if (tripFilters.clientId && t.companyId.toString() !== tripFilters.clientId) return false;
-        if (tripFilters.startDate && new Date(t.date) < new Date(tripFilters.startDate)) return false;
-        if (tripFilters.endDate && new Date(t.date) > new Date(tripFilters.endDate)) return false;
-        if (tripFilters.routeLoc) {
-            const loc = tripFilters.routeLoc.toLowerCase();
-            const from = t.route?.fromLocation?.toLowerCase() || '';
-            const to = t.route?.toLocation?.toLowerCase() || '';
-            if (!from.includes(loc) && !to.includes(loc)) return false;
-        }
+    const filteredTrips = useMemo(() => data.trips.filter(t => {
+        if (filters.clientId && String(t.companyId) !== String(filters.clientId)) return false;
+        if (filters.startDate && new Date(t.date) < new Date(filters.startDate)) return false;
+        if (filters.endDate && new Date(t.date) > new Date(filters.endDate)) return false;
         return true;
-    });
+    }), [data.trips, filters]);
 
-    const tripCols = [
-        { header: 'Trip No', key: 'tripNo', render: t => <strong>{t.tripNo}</strong>, exportValue: t => t.tripNo },
-        { header: 'Date', key: 'date', render: t => new Date(t.date).toLocaleDateString(), exportValue: t => new Date(t.date).toLocaleDateString() },
-        { header: 'Client', key: 'client', render: t => t.company?.companyName, exportValue: t => t.company?.companyName || '' },
-        { header: 'Route', key: 'route', render: t => `${t.route?.fromLocation} ➔ ${t.route?.toLocation}`, exportValue: t => `${t.route?.fromLocation} - ${t.route?.toLocation}` },
-        { header: 'Vehicle', key: 'vehicle', render: t => t.vehicle?.regNo, exportValue: t => t.vehicle?.regNo || '' },
-        { header: 'Bill Wt.', key: 'wt', render: t => `${t.billWeight} T`, exportValue: t => t.billWeight },
-        { header: 'Total Bill (₹)', key: 'bill', render: t => <strong style={{color:'#16a34a'}}>{t.totalClientBill?.toFixed(2)}</strong>, exportValue: t => t.totalClientBill?.toFixed(2) }
-    ];
-
-    // B. Vehicles
-    const filteredVehicles = data.vehicles.filter(v => {
-        if (vehicleFilters.ownership !== 'All' && v.ownershipType !== vehicleFilters.ownership) return false;
-        if (vehicleFilters.status !== 'All' && v.status !== vehicleFilters.status) return false;
+    const filteredInvoices = useMemo(() => data.invoices.filter(inv => {
+        if (filters.startDate && new Date(inv.date) < new Date(filters.startDate)) return false;
+        if (filters.endDate && new Date(inv.date) > new Date(filters.endDate)) return false;
+        if (filters.clientId && String(inv.location?.company?.id) !== String(filters.clientId)) return false;
         return true;
-    });
+    }), [data.invoices, filters]);
 
-    const vehicleCols = [
-        { header: 'Reg No', key: 'regNo', render: v => <strong>{v.regNo}</strong>, exportValue: v => v.regNo },
-        { header: 'Ownership', key: 'own', render: v => v.ownershipType, exportValue: v => v.ownershipType },
-        { header: 'Capacity', key: 'cap', render: v => `${v.capacityTon} T`, exportValue: v => v.capacityTon },
-        { header: 'FC Expiry', key: 'fc', render: v => v.fcExpiry ? new Date(v.fcExpiry).toLocaleDateString() : '-', exportValue: v => v.fcExpiry ? new Date(v.fcExpiry).toLocaleDateString() : '' },
-        { header: 'Permit Expiry', key: 'permit', render: v => v.permit1YrExpiry ? new Date(v.permit1YrExpiry).toLocaleDateString() : '-', exportValue: v => v.permit1YrExpiry ? new Date(v.permit1YrExpiry).toLocaleDateString() : '' },
-        { header: 'Tax Expiry', key: 'tax', render: v => v.qTaxExpiry ? new Date(v.qTaxExpiry).toLocaleDateString() : '-', exportValue: v => v.qTaxExpiry ? new Date(v.qTaxExpiry).toLocaleDateString() : '' }
-    ];
+    const filteredAccounts = data.accounts.filter(a => filters.group === 'All' || a.accountGroup?.includes(filters.group));
+    const incomeAccounts = data.accounts.filter(a => a.accountType === 'Income');
+    const expenseAccounts = data.accounts.filter(a => a.accountType === 'Expense');
+    const debtorAccounts = data.accounts.filter(a => a.accountGroup?.includes('Sundry Debtors'));
+    const creditorAccounts = data.accounts.filter(a => a.accountGroup?.includes('Sundry Creditors'));
 
-    // C. Audit
-    const filteredAccounts = data.accounts.filter(a => {
-        if (auditFilters.group !== 'All' && !a.accountGroup?.includes(auditFilters.group)) return false;
-        return true;
-    });
+    const revenue = incomeAccounts.reduce((sum, a) => sum + Number(a.currentBalance || 0), 0);
+    const expenses = expenseAccounts.reduce((sum, a) => sum + Number(a.currentBalance || 0), 0);
+    const receivables = debtorAccounts.reduce((sum, a) => sum + Math.max(0, Number(a.currentBalance || 0)), 0);
+    const payables = creditorAccounts.reduce((sum, a) => sum + Math.max(0, Number(a.currentBalance || 0)), 0);
+    const taxPayable = data.accounts.filter(a => a.accountGroup === 'Duties & Taxes').reduce((sum, a) => sum + Math.max(0, Number(a.currentBalance || 0)), 0);
+    const dieselControl = data.accounts.filter(a => a.accountGroup?.includes('Diesel')).reduce((sum, a) => sum + Math.abs(Number(a.currentBalance || 0)), 0);
+    const invoiced = filteredInvoices.reduce((sum, inv) => sum + Number(inv.grandTotal || 0), 0);
+    const collected = filteredInvoices.reduce((sum, inv) => sum + Number(inv.totalPaid || 0), 0);
+    const unbilled = filteredTrips.filter(t => !t.invoiceId).reduce((sum, t) => sum + Number(t.totalClientBill || 0), 0);
+    const grossProfit = revenue - expenses;
+    const margin = revenue > 0 ? (grossProfit / revenue) * 100 : 0;
 
-    const auditCols = [
-        { header: 'Account Name', key: 'name', render: a => <strong>{a.accountName}</strong>, exportValue: a => a.accountName },
-        { header: 'Group', key: 'group', render: a => a.accountGroup, exportValue: a => a.accountGroup },
-        { header: 'Type', key: 'type', render: a => a.accountType, exportValue: a => a.accountType },
-        { header: 'Opening Bal.', key: 'ob', render: a => `₹${a.openingBalance}`, exportValue: a => a.openingBalance },
-        { header: 'Current Bal.', key: 'cb', render: a => (
-            <span style={{ fontWeight: 'bold', color: a.balanceType === 'Dr' && a.currentBalance >= 0 ? '#16a34a' : (a.balanceType === 'Cr' && a.currentBalance >= 0 ? '#ea580c' : '#dc2626') }}>
-                ₹{a.currentBalance?.toFixed(2)} {a.balanceType}
-            </span>
-        ), exportValue: a => `${a.currentBalance?.toFixed(2)} ${a.balanceType}` }
-    ];
+    const aging = filteredInvoices.filter(inv => inv.status !== 'Paid').reduce((acc, inv) => {
+        const due = inv.dueDate ? new Date(inv.dueDate) : new Date(inv.date);
+        const days = Math.max(0, Math.floor((new Date() - due) / 86400000));
+        const bucket = days <= 30 ? '0-30' : days <= 60 ? '31-60' : days <= 90 ? '61-90' : '90+';
+        acc[bucket] += Number(inv.balanceAmount || 0);
+        return acc;
+    }, { '0-30': 0, '31-60': 0, '61-90': 0, '90+': 0 });
+    const agingMax = Math.max(...Object.values(aging), 1);
 
-    // ==========================================
-    // 3. EXPORT ENGINES
-    // ==========================================
+    const tripRows = filteredTrips.map(t => ({
+        ...t,
+        grossMargin: Number(t.totalClientBill || 0) - Number(t.netTruckPayout || 0),
+        marginPct: Number(t.totalClientBill || 0) > 0 ? ((Number(t.totalClientBill || 0) - Number(t.netTruckPayout || 0)) / Number(t.totalClientBill || 0)) * 100 : 0
+    }));
 
-    const getActiveTableConfig = () => {
-        if (activeTab === 'trips') return { data: filteredTrips, cols: tripCols, title: 'Trip_Report' };
-        if (activeTab === 'vehicles') return { data: filteredVehicles, cols: vehicleCols, title: 'Vehicle_Asset_Report' };
-        if (activeTab === 'audit') return { data: filteredAccounts, cols: auditCols, title: 'Ledger_Audit_Report' };
-        return null;
-    };
+    const clientRows = data.clients.map(client => {
+        const invoices = data.invoices.filter(inv => inv.location?.company?.id === client.id);
+        const trips = data.trips.filter(t => t.companyId === client.id);
+        const account = debtorAccounts.find(a => a.clientId === client.id);
+        return { id: client.id, name: client.companyName, trips: trips.length, invoiced: invoices.reduce((sum, inv) => sum + Number(inv.grandTotal || 0), 0), outstanding: Math.max(0, Number(account?.currentBalance || 0)) };
+    }).sort((a, b) => b.outstanding - a.outstanding);
 
-    const handleExportCSV = () => {
-        const config = getActiveTableConfig();
-        if (!config || config.data.length === 0) return alert("No data to export.");
-
-        const headers = config.cols.map(c => `"${c.header}"`).join(',');
-        const rows = config.data.map(row => 
-            config.cols.map(c => {
-                const val = c.exportValue(row) || '';
-                return `"${String(val).replace(/"/g, '""')}"`; // Escape quotes for CSV
-            }).join(',')
-        );
-
-        const csvContent = "data:text/csv;charset=utf-8," + [headers, ...rows].join('\n');
-        const encodedUri = encodeURI(csvContent);
-        const link = document.createElement("a");
-        link.setAttribute("href", encodedUri);
-        link.setAttribute("download", `${config.title}_${new Date().toISOString().split('T')[0]}.csv`);
+    const tableValue = (row, column) => column.exportValue ? column.exportValue(row) : row[column.key] ?? '';
+    const downloadFile = (content, mimeType, fileName) => {
+        const blob = new Blob([content], { type: mimeType });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = fileName;
         document.body.appendChild(link);
         link.click();
+        URL.revokeObjectURL(link.href);
         document.body.removeChild(link);
     };
-
-    const handleExportPDF = () => {
-        const config = getActiveTableConfig();
-        if (!config || config.data.length === 0) return alert("No data to print.");
-
+    const exportExcel = (rows, columns, title) => {
+        if (!rows.length) return alert('No data to export.');
+        const html = `<html><head><meta charset="utf-8" /></head><body><table border="1"><thead><tr>${columns.map(c => `<th>${htmlEscape(c.header)}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${columns.map(c => `<td>${htmlEscape(tableValue(row, c))}</td>`).join('')}</tr>`).join('')}</tbody></table></body></html>`;
+        downloadFile(html, 'application/vnd.ms-excel', `${title}_${today()}.xls`);
+    };
+    const printReport = (rows, columns, title) => {
+        if (!rows.length) return alert('No data to print.');
         const printWindow = window.open('', '_blank');
-        const html = `
-            <html>
-                <head>
-                    <title>${escapeHtml(config.title.replace(/_/g, ' '))}</title>
-                    <style>
-                        body { font-family: Arial, sans-serif; padding: 20px; color: #333; }
-                        h2 { text-align: center; color: #1e293b; margin-bottom: 5px; }
-                        p { text-align: center; color: #64748b; font-size: 12px; margin-bottom: 20px; }
-                        table { width: 100%; border-collapse: collapse; font-size: 12px; }
-                        th, td { border: 1px solid #cbd5e1; padding: 8px; text-align: left; }
-                        th { background-color: #f1f5f9; font-weight: bold; color: #334155; }
-                    </style>
-                </head>
-                <body>
-                    <h2>${escapeHtml(config.title.replace(/_/g, ' '))}</h2>
-                    <p>Generated on: ${new Date().toLocaleString()}</p>
-                    <table>
-                        <thead>
-                            <tr>${config.cols.map(c => `<th>${escapeHtml(c.header)}</th>`).join('')}</tr>
-                        </thead>
-                        <tbody>
-                            ${config.data.map(row => `<tr>${config.cols.map(c => `<td>${escapeHtml(c.exportValue(row))}</td>`).join('')}</tr>`).join('')}
-                        </tbody>
-                    </table>
-                    <script>
-                        window.onload = () => { window.print(); window.close(); }
-                    </script>
-                </body>
-            </html>
-        `;
-        printWindow.document.write(html);
+        printWindow.document.write(`<html><head><title>${htmlEscape(title)}</title><style>@page{size:A4 landscape;margin:8mm}body{font-family:Arial,sans-serif;padding:12px;color:#111827}h2{margin:0 0 4px;font-size:18px}p{color:#64748b;font-size:11px;margin:0 0 12px}table{width:100%;border-collapse:collapse;font-size:10px;table-layout:auto}th,td{border:1px solid #cbd5e1;padding:5px;text-align:left;vertical-align:top;word-break:break-word}th{background:#f1f5f9;color:#334155}@media print{body{padding:0}}</style></head><body><h2>${htmlEscape(title.replace(/_/g, ' '))}</h2><p>Generated on ${new Date().toLocaleString()}</p><table><thead><tr>${columns.map(c => `<th>${htmlEscape(c.header)}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${columns.map(c => `<td>${htmlEscape(tableValue(row, c))}</td>`).join('')}</tr>`).join('')}</tbody></table><script>window.onload=()=>window.print()</script></body></html>`);
         printWindow.document.close();
     };
+    const ExportButtons = ({ rows, columns, title }) => (
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
+            <button onClick={() => exportExcel(rows, columns, title)} style={{ padding: '9px 14px', border: 0, borderRadius: '6px', background: '#0f766e', color: 'white', fontWeight: 800, cursor: 'pointer' }}>Export Excel</button>
+            <button onClick={() => printReport(rows, columns, title)} style={{ padding: '9px 14px', border: 0, borderRadius: '6px', background: '#2563eb', color: 'white', fontWeight: 800, cursor: 'pointer' }}>Print Report</button>
+        </div>
+    );
+
+    if (data.loading) return <div style={{ padding: '40px', fontWeight: 800 }}>Loading reports...</div>;
+
+    const tripCols = [
+        { header: 'Trip', key: 'tripNo', render: t => <strong>{t.tripNo}</strong>, exportValue: t => t.tripNo },
+        { header: 'Date', key: 'date', render: t => dateText(t.date), exportValue: t => dateText(t.date) },
+        { header: 'Client', key: 'company.companyName', render: t => t.company?.companyName, exportValue: t => t.company?.companyName || '' },
+        { header: 'Vehicle', key: 'vehicle.regNo', render: t => t.vehicle?.regNo, exportValue: t => t.vehicle?.regNo || '' },
+        { header: 'Revenue', key: 'totalClientBill', render: t => money(t.totalClientBill), exportValue: t => t.totalClientBill },
+        { header: 'Vendor Cost', key: 'netTruckPayout', render: t => money(t.netTruckPayout), exportValue: t => t.netTruckPayout },
+        { header: 'Client Diesel', key: 'dieselAmount', render: t => money(t.dieselAmount), exportValue: t => t.dieselAmount },
+        { header: 'Margin', key: 'grossMargin', render: t => <strong style={{ color: t.grossMargin >= 0 ? '#0f766e' : '#dc2626' }}>{money(t.grossMargin)} ({pct(t.marginPct)})</strong>, exportValue: t => t.grossMargin }
+    ];
+    const invoiceCols = [
+        { header: 'Invoice', key: 'invoiceNo', render: inv => <strong>{inv.invoiceNo}</strong>, exportValue: inv => inv.invoiceNo },
+        { header: 'Client', key: 'location.company.companyName', render: inv => inv.location?.company?.companyName, exportValue: inv => inv.location?.company?.companyName || '' },
+        { header: 'Date', key: 'date', render: inv => dateText(inv.date), exportValue: inv => dateText(inv.date) },
+        { header: 'Total', key: 'grandTotal', render: inv => money(inv.grandTotal), exportValue: inv => inv.grandTotal },
+        { header: 'Paid/Advance', key: 'totalPaid', render: inv => money(inv.totalPaid), exportValue: inv => inv.totalPaid },
+        { header: 'Balance', key: 'balanceAmount', render: inv => <strong style={{ color: inv.balanceAmount > 0 ? '#b45309' : '#0f766e' }}>{money(inv.balanceAmount)}</strong>, exportValue: inv => inv.balanceAmount },
+        { header: 'Status', key: 'status', render: inv => inv.status, exportValue: inv => inv.status }
+    ];
+    const accountCols = [
+        { header: 'Account', key: 'accountName', render: a => <strong>{a.accountName}</strong>, exportValue: a => a.accountName },
+        { header: 'Type', key: 'accountType', exportValue: a => a.accountType },
+        { header: 'Group', key: 'accountGroup', exportValue: a => a.accountGroup },
+        { header: 'Balance', key: 'currentBalance', render: a => <strong>{money(a.currentBalance)} {a.balanceType}</strong>, exportValue: a => `${a.currentBalance} ${a.balanceType}` }
+    ];
+    const clientCols = [
+        { header: 'Client', key: 'name', render: c => <strong>{c.name}</strong>, exportValue: c => c.name },
+        { header: 'Trips', key: 'trips', exportValue: c => c.trips },
+        { header: 'Invoiced', key: 'invoiced', render: c => money(c.invoiced), exportValue: c => c.invoiced },
+        { header: 'Outstanding', key: 'outstanding', render: c => <strong>{money(c.outstanding)}</strong>, exportValue: c => c.outstanding }
+    ];
 
     return (
-        <div style={{ padding: '20px', maxWidth: '1400px', margin: '0 auto', backgroundColor: '#f8fafc', minHeight: '100vh' }}>
-            
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' }}>
-                <h2 style={{ color: '#1e293b', margin: 0 }}>Reporting Engine</h2>
-                {activeTab !== 'summary' && (
-                    <div style={{ display: 'flex', gap: '10px' }}>
-                        <button onClick={handleExportCSV} style={{ padding: '8px 16px', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
-                            📊 Export Excel (CSV)
-                        </button>
-                        <button onClick={handleExportPDF} style={{ padding: '8px 16px', backgroundColor: '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>
-                            🖨️ Print / Save PDF
-                        </button>
-                    </div>
-                )}
+        <div style={{ padding: '22px', maxWidth: '1500px', margin: '0 auto', background: '#f8fafc', minHeight: '100vh' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '16px', alignItems: 'center', marginBottom: '18px', flexWrap: 'wrap' }}>
+                <div><h2 style={{ margin: 0, color: '#0f172a' }}>Reports Dashboard</h2><p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '13px' }}>Ledger-backed finance, collections, trip margin, diesel mapping, and account audit.</p></div>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>{['summary', 'trips', 'invoices', 'clients', 'accounts'].map(tab => <button key={tab} onClick={() => setActiveTab(tab)} style={{ padding: '9px 14px', border: 0, borderRadius: '6px', cursor: 'pointer', fontWeight: 800, background: activeTab === tab ? '#0f172a' : 'white', color: activeTab === tab ? 'white' : '#475569' }}>{tab[0].toUpperCase() + tab.slice(1)}</button>)}</div>
             </div>
-
-            {/* TAB NAVIGATION */}
-            <div style={{ display: 'flex', gap: '10px', marginBottom: '25px', borderBottom: '2px solid #e2e8f0', paddingBottom: '10px' }}>
-                {['summary', 'trips', 'vehicles', 'audit'].map(tab => (
-                    <button key={tab} onClick={() => setActiveTab(tab)} style={{ 
-                        padding: '10px 20px', cursor: 'pointer', fontWeight: 'bold', borderRadius: '6px', border: 'none',
-                        backgroundColor: activeTab === tab ? '#1e293b' : 'transparent',
-                        color: activeTab === tab ? 'white' : '#64748b'
-                    }}>
-                        {tab === 'summary' ? 'Executive Dashboard' : tab === 'trips' ? 'Trip Reports' : tab === 'vehicles' ? 'Vehicle & Asset Report' : 'Ledger & Audit'}
-                    </button>
-                ))}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '12px', marginBottom: '18px' }}>
+                <select value={filters.clientId} onChange={e => setFilters({ ...filters, clientId: e.target.value })} style={{ padding: '10px', border: '1px solid #cbd5e1', borderRadius: '6px' }}><option value="">All clients</option>{data.clients.map(c => <option key={c.id} value={c.id}>{c.companyName}</option>)}</select>
+                <input type="date" value={filters.startDate} onChange={e => setFilters({ ...filters, startDate: e.target.value })} style={{ padding: '10px', border: '1px solid #cbd5e1', borderRadius: '6px' }} />
+                <input type="date" value={filters.endDate} onChange={e => setFilters({ ...filters, endDate: e.target.value })} style={{ padding: '10px', border: '1px solid #cbd5e1', borderRadius: '6px' }} />
+                <button onClick={() => setFilters({ clientId: '', startDate: '', endDate: '', group: 'All' })} style={{ padding: '10px', border: '1px solid #cbd5e1', borderRadius: '6px', background: 'white', cursor: 'pointer', fontWeight: 800 }}>Clear</button>
             </div>
-
-            {/* TAB 1: EXECUTIVE SUMMARY */}
-            {activeTab === 'summary' && (
-                <div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '20px', marginBottom: '30px' }}>
-                        <KpiCard title="Total Revenue (Invoiced)" value={`₹ ${totalInvoiced.toLocaleString('en-IN')}`} color="#3b82f6" subtitle={`${data.invoices.length} Total Invoices`} />
-                        <KpiCard title="Total Receivables (Owed)" value={`₹ ${totalReceivables.toLocaleString('en-IN')}`} color="#10b981" subtitle="From Sundry Debtors" />
-                        <KpiCard title="Total Payables (You Owe)" value={`₹ ${totalPayables.toLocaleString('en-IN')}`} color="#ef4444" subtitle="To Creditors & Vendors" />
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: '20px' }}>
-                        <ReportSection title="🚚 Operations Summary">
-                            <StatRow label="Total Trips Dispatched" value={totalTrips} />
-                            <StatRow label="Total Unbilled Freight" value={`₹ ${(totalFreightGenerated - totalInvoiced + totalTax).toLocaleString('en-IN')}`} valColor="#10b981" />
-                        </ReportSection>
-                        <ReportSection title="🏢 Asset & Accounts Summary">
-                            <StatRow label="Total Client Profiles" value={debtors.length} />
-                            <StatRow label="Total Vendor Profiles" value={creditors.length} />
-                        </ReportSection>
-                    </div>
-                </div>
-            )}
-
-            {/* TAB 2: TRIP REPORTS */}
-            {activeTab === 'trips' && (
-                <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}>
-                    <div style={{ display: 'flex', gap: '15px', marginBottom: '20px', backgroundColor: '#f8fafc', padding: '15px', borderRadius: '8px' }}>
-                        <div style={{ flex: 1 }}><label style={{fontSize:'12px', fontWeight:'bold'}}>Client</label><select value={tripFilters.clientId} onChange={e => setTripFilters({...tripFilters, clientId: e.target.value})} style={{width:'100%', padding:'8px'}}><option value="">All Clients</option>{data.clients.map(c => <option key={c.id} value={c.id}>{c.companyName}</option>)}</select></div>
-                        <div style={{ flex: 1 }}><label style={{fontSize:'12px', fontWeight:'bold'}}>Location/Route</label><input type="text" placeholder="e.g. Mumbai" value={tripFilters.routeLoc} onChange={e => setTripFilters({...tripFilters, routeLoc: e.target.value})} style={{width:'100%', padding:'8px', border:'1px solid #cbd5e1', borderRadius:'4px'}} /></div>
-                        <div style={{ flex: 1 }}><label style={{fontSize:'12px', fontWeight:'bold'}}>Start Date</label><input type="date" value={tripFilters.startDate} onChange={e => setTripFilters({...tripFilters, startDate: e.target.value})} style={{width:'100%', padding:'8px', border:'1px solid #cbd5e1', borderRadius:'4px'}} /></div>
-                        <div style={{ flex: 1 }}><label style={{fontSize:'12px', fontWeight:'bold'}}>End Date</label><input type="date" value={tripFilters.endDate} onChange={e => setTripFilters({...tripFilters, endDate: e.target.value})} style={{width:'100%', padding:'8px', border:'1px solid #cbd5e1', borderRadius:'4px'}} /></div>
-                    </div>
-                    <DataTable data={filteredTrips} columns={tripCols} title="Operational Trips Report" />
-                </div>
-            )}
-
-            {/* TAB 3: VEHICLE REPORTS */}
-            {activeTab === 'vehicles' && (
-                <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}>
-                    <div style={{ display: 'flex', gap: '15px', marginBottom: '20px', backgroundColor: '#f8fafc', padding: '15px', borderRadius: '8px' }}>
-                        <div style={{ flex: 1 }}><label style={{fontSize:'12px', fontWeight:'bold'}}>Ownership Type</label><select value={vehicleFilters.ownership} onChange={e => setVehicleFilters({...vehicleFilters, ownership: e.target.value})} style={{width:'100%', padding:'8px'}}><option value="All">All Vehicles</option><option value="Owned">Owned Only (Fleet)</option><option value="Market">Market Only (Attached)</option></select></div>
-                        <div style={{ flex: 1 }}><label style={{fontSize:'12px', fontWeight:'bold'}}>Status</label><select value={vehicleFilters.status} onChange={e => setVehicleFilters({...vehicleFilters, status: e.target.value})} style={{width:'100%', padding:'8px'}}><option value="All">All Statuses</option><option value="Active">Active</option><option value="Inactive">Inactive</option></select></div>
-                    </div>
-                    <DataTable data={filteredVehicles} columns={vehicleCols} title="Fleet & Asset Compliance Report" />
-                </div>
-            )}
-
-            {/* TAB 4: AUDIT REPORTS */}
-            {activeTab === 'audit' && (
-                <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}>
-                    <div style={{ display: 'flex', gap: '15px', marginBottom: '20px', backgroundColor: '#f8fafc', padding: '15px', borderRadius: '8px' }}>
-                        <div style={{ flex: 1 }}><label style={{fontSize:'12px', fontWeight:'bold'}}>Account Group (Ledger Type)</label><select value={auditFilters.group} onChange={e => setAuditFilters({...auditFilters, group: e.target.value})} style={{width:'100%', padding:'8px'}}><option value="All">All Chart of Accounts</option><option value="Sundry Debtors">Sundry Debtors (Clients)</option><option value="Sundry Creditors">Sundry Creditors (Vendors/Pumps)</option><option value="Cash/Bank">Cash & Bank Accounts</option><option value="Income">Income Ledgers</option></select></div>
-                    </div>
-                    <DataTable data={filteredAccounts} columns={auditCols} title="Chart of Accounts & Ledger Balance Report" />
-                </div>
-            )}
-
+            {activeTab === 'summary' && <><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '14px', marginBottom: '18px' }}><StatCard label="Ledger Revenue" value={money(revenue)} tone="#2563eb" sub="Income ledger balance" /><StatCard label="Ledger Expenses" value={money(expenses)} tone="#dc2626" sub="Expense ledger balance" /><StatCard label="Gross Profit" value={money(grossProfit)} tone={grossProfit >= 0 ? '#0f766e' : '#dc2626'} sub={`Margin ${pct(margin)}`} /><StatCard label="Receivables" value={money(receivables)} tone="#b45309" sub="Open client ledger balance" /><StatCard label="Payables" value={money(payables)} tone="#7c3aed" sub="Vendor and pump creditors" /><StatCard label="Diesel Control" value={money(dieselControl)} tone="#0f766e" sub="Client/vendor diesel subledgers" /><StatCard label="Output Tax" value={money(taxPayable)} tone="#475569" sub="Duties & Taxes" /></div><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '16px' }}><Section title="Collections Snapshot"><Bar label="Invoiced" value={invoiced} max={Math.max(invoiced, collected, 1)} color="#2563eb" /><Bar label="Collected incl. advances" value={collected} max={Math.max(invoiced, collected, 1)} color="#0f766e" /><Bar label="Unbilled trips" value={unbilled} max={Math.max(invoiced, unbilled, 1)} color="#b45309" /></Section><Section title="Receivable Aging">{Object.entries(aging).map(([label, value]) => <Bar key={label} label={label} value={value} max={agingMax} color={label === '90+' ? '#dc2626' : '#0f766e'} />)}</Section><Section title="Top Client Outstanding">{clientRows.slice(0, 5).map(c => <Bar key={c.id} label={c.name} value={c.outstanding} max={Math.max(clientRows[0]?.outstanding || 1, 1)} color="#7c3aed" />)}</Section></div></>}
+            {activeTab === 'trips' && <><ExportButtons rows={tripRows} columns={tripCols} title="Trip_Margin_Report" /><DataTable data={tripRows} columns={tripCols} title="Trip Profitability" enableColumnFilters /></>}
+            {activeTab === 'invoices' && <><ExportButtons rows={filteredInvoices} columns={invoiceCols} title="Invoice_Collections_Report" /><DataTable data={filteredInvoices} columns={invoiceCols} title="Invoice Collections" enableColumnFilters /></>}
+            {activeTab === 'clients' && <><ExportButtons rows={clientRows} columns={clientCols} title="Client_Performance_Report" /><DataTable data={clientRows} columns={clientCols} title="Client Performance" enableColumnFilters /></>}
+            {activeTab === 'accounts' && <><div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}><select value={filters.group} onChange={e => setFilters({ ...filters, group: e.target.value })}><option value="All">All groups</option><option value="Sundry Debtors">Sundry Debtors</option><option value="Sundry Creditors">Sundry Creditors</option><option value="Cash/Bank">Cash/Bank</option><option value="Direct Income">Income</option><option value="Expense">Expense</option><option value="Duties & Taxes">Duties & Taxes</option><option value="Client Diesel">Client Diesel</option><option value="Vendor Diesel">Vendor Diesel</option></select></div><ExportButtons rows={filteredAccounts} columns={accountCols} title="Ledger_Audit_Report" /><DataTable data={filteredAccounts} columns={accountCols} title="Ledger Account Audit" enableColumnFilters /></>}
         </div>
     );
 }
