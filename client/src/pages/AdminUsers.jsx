@@ -9,6 +9,13 @@ function dateText(value) {
   return value ? new Date(value).toLocaleString() : '-';
 }
 
+async function readJsonResponse(response) {
+  const contentType = response.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) return response.json();
+  const body = await response.text();
+  return { error: body && body.length < 300 ? body : 'The server returned an unexpected response.' };
+}
+
 async function downloadExport(url, fileName) {
   const response = await fetch(url);
   if (!response.ok) throw new Error('Export failed.');
@@ -44,6 +51,7 @@ function uniqueProfiles(profiles) {
 export default function AdminUsers({ profiles = [], onCompaniesChanged }) {
   const companyProfiles = useMemo(() => uniqueProfiles(profiles), [profiles]);
   const [users, setUsers] = useState([]);
+  const [deletedUsers, setDeletedUsers] = useState([]);
   const [logs, setLogs] = useState([]);
   const [backups, setBackups] = useState([]);
   const [deletedCompanies, setDeletedCompanies] = useState([]);
@@ -58,13 +66,15 @@ export default function AdminUsers({ profiles = [], onCompaniesChanged }) {
   const [message, setMessage] = useState('');
 
   const load = async () => {
-    const [usersRes, logsRes, backupsRes, deletedCompaniesRes] = await Promise.all([
+    const [usersRes, deletedUsersRes, logsRes, backupsRes, deletedCompaniesRes] = await Promise.all([
       fetch('/api/admin/users'),
+      fetch('/api/admin/users/deleted'),
       fetch('/api/admin/audit-logs'),
       fetch('/api/admin/backups'),
       fetch('/api/my-company/deleted/all'),
     ]);
     if (usersRes.ok) setUsers(await usersRes.json());
+    if (deletedUsersRes.ok) setDeletedUsers(await deletedUsersRes.json());
     if (logsRes.ok) setLogs(await logsRes.json());
     if (backupsRes.ok) setBackups(await backupsRes.json());
     if (deletedCompaniesRes.ok) setDeletedCompanies(await deletedCompaniesRes.json());
@@ -93,13 +103,17 @@ export default function AdminUsers({ profiles = [], onCompaniesChanged }) {
     const method = editingId ? 'PUT' : 'POST';
     const payload = { ...form };
     if (editingId && !payload.password) delete payload.password;
-    const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-    const data = await res.json();
-    if (!res.ok) return setMessage(data.error || 'Failed to save user.');
-    setForm(emptyUser);
-    setEditingId(null);
-    setMessage('User saved.');
-    await load();
+    try {
+      const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      const data = await readJsonResponse(res);
+      if (!res.ok) return setMessage(data.error || 'Failed to save user.');
+      setForm(emptyUser);
+      setEditingId(null);
+      setMessage(editingId ? 'User updated.' : 'User created.');
+      await load();
+    } catch (error) {
+      setMessage(error.message || 'Failed to save user.');
+    }
   };
 
   const saveCompany = async (event) => {
@@ -139,9 +153,28 @@ export default function AdminUsers({ profiles = [], onCompaniesChanged }) {
   };
 
   const deleteUser = async (id) => {
-    if (!confirm('Delete this user?')) return;
+    if (!confirm('Move this user to the recycle bin?')) return;
     const res = await fetch(`/api/admin/users/${id}`, { method: 'DELETE' });
-    if (!res.ok) return setMessage('Failed to delete user.');
+    const data = await readJsonResponse(res);
+    if (!res.ok) return setMessage(data.error || 'Failed to delete user.');
+    setMessage('User moved to recycle bin.');
+    await load();
+  };
+
+  const restoreUser = async (user) => {
+    const res = await fetch(`/api/admin/users/${user.id}/restore`, { method: 'PATCH' });
+    const data = await readJsonResponse(res);
+    if (!res.ok) return setMessage(data.error || 'Failed to restore user.');
+    setMessage(`User restored: ${data.email}`);
+    await load();
+  };
+
+  const permanentlyDeleteUser = async (user) => {
+    if (!confirm(`Permanently delete ${user.email}? This cannot be undone.`)) return;
+    const res = await fetch(`/api/admin/users/${user.id}/permanent`, { method: 'DELETE' });
+    const data = await readJsonResponse(res);
+    if (!res.ok) return setMessage(data.error || 'Failed to permanently delete user.');
+    setMessage('User permanently deleted.');
     await load();
   };
 
@@ -285,7 +318,8 @@ export default function AdminUsers({ profiles = [], onCompaniesChanged }) {
           <h3>{editingId ? 'Edit User' : 'Create User'}</h3>
           <input placeholder="Name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required />
           <input placeholder="Email" type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} required disabled={!!editingId} />
-          <input placeholder={editingId ? 'New password optional' : 'Password'} type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} required={!editingId} />
+          <input placeholder={editingId ? 'New password optional' : 'Password'} type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} required={!editingId} minLength={form.password || !editingId ? 10 : undefined} />
+          <small>{editingId ? 'Leave blank to keep the current password; a new password needs at least 10 characters.' : 'Password must contain at least 10 characters.'}</small>
           <select value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}>
             <option value="USER">User</option>
             <option value="SUPERADMIN">Superadmin</option>
@@ -323,6 +357,24 @@ export default function AdminUsers({ profiles = [], onCompaniesChanged }) {
               </div>
             ))}
           </div>
+        </div>
+      </section>
+
+      <section className="admin-panel">
+        <h3>User Recycle Bin</h3>
+        <div className="compact-list">
+          {deletedUsers.length === 0 && <div className="empty-state">No deleted users.</div>}
+          {deletedUsers.map(user => (
+            <div className="compact-row" key={user.id}>
+              <div>
+                <strong>{user.name}</strong>
+                <span>{user.email} | Deleted {dateText(user.deletedAt)}</span>
+                <small>{(user.companies || []).join(', ') || 'No companies assigned'}</small>
+              </div>
+              <button onClick={() => restoreUser(user)}>Restore</button>
+              <button className="danger-text" onClick={() => permanentlyDeleteUser(user)}>Permanent Delete</button>
+            </div>
+          ))}
         </div>
       </section>
 
