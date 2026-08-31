@@ -25,6 +25,9 @@ export default function Reminders() {
   const [category, setCategory] = useState('All');
   const [status, setStatus] = useState('Actionable');
   const [loading, setLoading] = useState(true);
+  const [emailTo, setEmailTo] = useState('');
+  const [daysAhead, setDaysAhead] = useState(30);
+  const [sending, setSending] = useState(false);
 
   const loadReminders = async () => {
     setLoading(true);
@@ -34,6 +37,22 @@ export default function Reminders() {
   };
 
   useEffect(() => { loadReminders().catch(() => setLoading(false)); }, []);
+
+  const sendEmail = async () => {
+    setSending(true);
+    try {
+      const res = await fetch('/api/reminders/email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recipients: emailTo, daysAhead })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return alert(data.error || 'Failed to send reminder email.');
+      alert(`${data.message} ${data.items} reminder item(s) included.`);
+    } finally {
+      setSending(false);
+    }
+  };
 
   const filtered = useMemo(() => items.filter(item => {
     if (category !== 'All' && item.category !== category) return false;
@@ -96,6 +115,29 @@ export default function Reminders() {
           <option value="Due Soon">Due Soon</option>
           <option value="Upcoming">Upcoming</option>
         </select>
+        <input
+          type="text"
+          placeholder="Send to email, comma separated"
+          value={emailTo}
+          onChange={e => setEmailTo(e.target.value)}
+          style={{ padding: '9px', border: '1px solid #cbd5e1', borderRadius: '6px', minWidth: '230px' }}
+        />
+        <input
+          type="number"
+          min="0"
+          value={daysAhead}
+          onChange={e => setDaysAhead(e.target.value)}
+          style={{ padding: '9px', border: '1px solid #cbd5e1', borderRadius: '6px', width: '110px' }}
+          title="Days ahead"
+        />
+        <button
+          type="button"
+          onClick={sendEmail}
+          disabled={sending}
+          style={{ padding: '9px 14px', border: 0, borderRadius: '6px', background: sending ? '#94a3b8' : '#0f766e', color: 'white', cursor: sending ? 'not-allowed' : 'pointer', fontWeight: 800 }}
+        >
+          {sending ? 'Sending...' : 'Send Email'}
+        </button>
       </div>
 
       <DataTable data={filtered} columns={columns} title="Reminder Register" enableColumnFilters />

@@ -6,6 +6,7 @@ const { authMiddleware, tenantMiddleware } = require('./routes/tenant');
 const { router: authRouter, ensureSuperAdmin } = require('./routes/auth');
 const { auditMiddleware } = require('./lib/audit');
 const { scheduleDailyBackup } = require('./lib/backup');
+const { scheduleDailyReminderEmails } = require('./lib/reminderService');
 const { ensureDatabaseSchema } = require('./lib/schemaSync');
 require('dotenv').config();
 
@@ -82,6 +83,7 @@ async function start() {
     await ensureDatabaseSchema(prisma);
     await ensureSuperAdmin();
     scheduleDailyBackup(prisma);
+    scheduleDailyReminderEmails(prisma);
     app.listen(PORT, () => {
         console.log(`ERP Server is running and listening on port ${PORT}`);
     });
