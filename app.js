@@ -6,6 +6,7 @@ const { authMiddleware, tenantMiddleware } = require('./routes/tenant');
 const { router: authRouter, ensureSuperAdmin } = require('./routes/auth');
 const { auditMiddleware } = require('./lib/audit');
 const { scheduleDailyBackup } = require('./lib/backup');
+const { ensureDatabaseSchema } = require('./lib/schemaSync');
 require('dotenv').config();
 
 const app = express();
@@ -78,6 +79,7 @@ app.get('*', (req, res) => {
 
 // Start Server
 async function start() {
+    await ensureDatabaseSchema(prisma);
     await ensureSuperAdmin();
     scheduleDailyBackup(prisma);
     app.listen(PORT, () => {

@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: transport-erp
+    env: node
+    plan: free
+    buildCommand: npm install && npx prisma generate && cd client && npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 20.19.0
+      - key: SKIP_DB_PUSH
+        value: false
