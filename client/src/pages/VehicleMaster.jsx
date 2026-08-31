@@ -45,6 +45,15 @@ export default function VehicleMaster() {
 
     const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
 
+    const handleOwnershipChange = (e) => {
+        const ownershipType = e.target.value;
+        setFormData(prev => ({
+            ...prev,
+            ownershipType,
+            vendorAccountId: ownershipType === 'Market' ? prev.vendorAccountId : ''
+        }));
+    };
+
     // Helper to safely format ISO dates for HTML date inputs
     const formatDate = (dateString) => dateString ? new Date(dateString).toISOString().split('T')[0] : '';
 
@@ -122,11 +131,13 @@ export default function VehicleMaster() {
         { header: 'Reg No', key: 'regNo', render: v => <strong style={{color:'#1e293b'}}>{v.regNo}</strong> },
         { header: 'Type', key: 'type', render: v => v.type },
         { header: 'Capacity', key: 'capacityTon', render: v => `${v.capacityTon} T` },
+        { header: 'Owner', key: 'ownerName', render: v => v.ownerName || '-' },
         { header: 'Ownership', key: 'ownershipType', render: v => (
             <span style={{ padding: '3px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold', backgroundColor: v.ownershipType === 'Owned' ? '#dcfce7' : '#e0e7ff', color: v.ownershipType === 'Owned' ? '#16a34a' : '#4f46e5' }}>
                 {v.ownershipType}
             </span>
         )},
+        { header: 'Vendor Ledger', key: 'vendorAccount.accountName', render: v => v.vendorAccount?.accountName || '-' },
         { header: 'FC Expiry', key: 'fcExpiry', render: v => v.fcExpiry ? new Date(v.fcExpiry).toLocaleDateString() : '-' },
         { header: 'PESO Expiry', key: 'pesoExpiry', render: v => v.pesoExpiry ? <span style={{color: '#ea580c', fontWeight: 'bold'}}>{new Date(v.pesoExpiry).toLocaleDateString()}</span> : '-' },
         { header: 'Status', key: 'status', render: v => <span style={{color: v.status === 'Active' ? '#16a34a' : '#ef4444', fontWeight: 'bold'}}>{v.status}</span> },
@@ -167,11 +178,19 @@ export default function VehicleMaster() {
                     
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
                         <label style={{ fontSize: '11px', fontWeight: '600', color: '#64748b' }}>Ownership Type</label>
-                        <select name="ownershipType" value={formData.ownershipType} onChange={handleChange} style={{ padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize:'13px' }}>
+                        <select name="ownershipType" value={formData.ownershipType} onChange={handleOwnershipChange} style={{ padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize:'13px' }}>
                             <option value="Owned">Owned (Company Fleet)</option>
                             <option value="Market">Market (Vendor/Attached)</option>
                         </select>
                     </div>
+
+                    <FormGroup
+                        label={formData.ownershipType === 'Market' ? 'Owner / Vendor Name' : 'Owner Name'}
+                        name="ownerName"
+                        value={formData.ownerName}
+                        onChange={handleChange}
+                        required={formData.ownershipType === 'Market'}
+                    />
 
                     {formData.ownershipType === 'Market' && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>

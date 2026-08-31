@@ -8,14 +8,15 @@ const prisma = new PrismaClient();
 
 function vehiclePayload(req, d) {
     const isMarket = d.ownershipType === 'Market';
+    const ownerName = text(d.ownerName, null);
     return {
         regNo: text(d.regNo),
         type: text(d.type, null),
         capacityTon: toNumber(d.capacityTon),
         tenantKey: req.tenantKey,
-        ownershipType: d.ownershipType,
-        ownerName: d.ownerName,
-        status: d.status || 'Active',
+        ownershipType: text(d.ownershipType, 'Owned') || 'Owned',
+        ownerName,
+        status: text(d.status, 'Active') || 'Active',
         vendorAccountId: isMarket ? toInt(d.vendorAccountId) : null,
         regDate: toDate(d.regDate),
         fcExpiry: toDate(d.fcExpiry),
@@ -31,13 +32,13 @@ function vehiclePayload(req, d) {
         rule19Expiry: toDate(d.rule19Expiry),
         rule43Expiry: toDate(d.rule43Expiry),
         pesoExpiry: toDate(d.pesoExpiry),
-        fitmentDetails: d.fitmentDetails,
-        sv1Num: d.sv1Num,
-        sv2Num: d.sv2Num,
-        sv3Num: d.sv3Num,
-        iv1Num: d.iv1Num,
-        iv2Num: d.iv2Num,
-        iv3Num: d.iv3Num,
+        fitmentDetails: text(d.fitmentDetails, null),
+        sv1Num: text(d.sv1Num, null),
+        sv2Num: text(d.sv2Num, null),
+        sv3Num: text(d.sv3Num, null),
+        iv1Num: text(d.iv1Num, null),
+        iv2Num: text(d.iv2Num, null),
+        iv3Num: text(d.iv3Num, null),
         sv1Expiry: toDate(d.sv1Expiry),
         sv2Expiry: toDate(d.sv2Expiry),
         sv3Expiry: toDate(d.sv3Expiry),
@@ -75,14 +76,16 @@ router.post('/', async (req, res) => {
         const d = req.body;
         const vehicle = await prisma.$transaction(async (tx) => {
             if (!text(d.regNo)) throw new Error('Registration number is required.');
+            if (d.ownershipType === 'Market' && !text(d.ownerName)) throw new Error('Owner name is required for market vehicles.');
             const createdVehicle = await tx.vehicle.create({ data: vehiclePayload(req, d) });
-            return attachAutoVendorAccount(tx, req, createdVehicle);
+            const linkedVehicle = await attachAutoVendorAccount(tx, req, createdVehicle);
+            return tx.vehicle.findFirst({ where: withTenant(req, { id: linkedVehicle.id }), include: { vendorAccount: true } });
         });
         res.json(vehicle);
     } catch (error) {
         console.error("Vehicle Create Error:", error);
         if (error.code === 'P2002') return res.status(400).json({ error: "Vehicle registration number or vendor ledger already exists." });
-        res.status(400).json({ error: "Failed to create vehicle." });
+        res.status(400).json({ error: error.message || "Failed to create vehicle." });
     }
 });
 
@@ -90,17 +93,20 @@ router.put('/:id', async (req, res) => {
     try {
         const d = req.body;
         const vehicle = await prisma.$transaction(async (tx) => {
+            if (!text(d.regNo)) throw new Error('Registration number is required.');
+            if (d.ownershipType === 'Market' && !text(d.ownerName)) throw new Error('Owner name is required for market vehicles.');
             const updatedVehicle = await tx.vehicle.update({
                 where: withTenant(req, { id: toRequiredInt(req.params.id, 'Vehicle') }),
                 data: vehiclePayload(req, d)
             });
-            return attachAutoVendorAccount(tx, req, updatedVehicle);
+            const linkedVehicle = await attachAutoVendorAccount(tx, req, updatedVehicle);
+            return tx.vehicle.findFirst({ where: withTenant(req, { id: linkedVehicle.id }), include: { vendorAccount: true } });
         });
         res.json(vehicle);
     } catch (error) {
         console.error("Vehicle Update Error:", error);
         if (error.code === 'P2002') return res.status(400).json({ error: "Vehicle registration number or vendor ledger already exists." });
-        res.status(400).json({ error: "Failed to update vehicle." });
+        res.status(400).json({ error: error.message || "Failed to update vehicle." });
     }
 });
 
