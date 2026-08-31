@@ -1,6 +1,6 @@
 ﻿import React, { useEffect, useState } from 'react';
 import { Routes, Route, NavLink, Navigate } from 'react-router-dom';
-import { clearAuthSession, getAuthUser, getTenantKey, setAuthSession, setTenantKey } from './tenant';
+import { clearAuthSession, getAuthToken, getTenantKey, setAuthSession, setTenantKey } from './tenant';
 
 import TripManagement from './pages/TripManagement';
 import Billing from './pages/Billing';
@@ -86,17 +86,33 @@ function LoginScreen({ onLogin }) {
 }
 
 export default function App() {
-  const [user, setUser] = useState(getAuthUser());
+  const [user, setUser] = useState(null);
+  const [authReady, setAuthReady] = useState(false);
   const [tenant, setTenant] = useState(getTenantKey());
   const [profiles, setProfiles] = useState([]);
   const isSuperAdmin = user?.role === 'SUPERADMIN';
 
   useEffect(() => {
-    if (!user) return;
+    if (!getAuthToken()) {
+      clearAuthSession();
+      setAuthReady(true);
+      return;
+    }
+
     fetch('/api/auth/me')
       .then(res => res.ok ? res.json() : Promise.reject())
       .then(data => setUser(data.user))
-      .catch(() => { clearAuthSession(); setUser(null); });
+      .catch(() => {
+        clearAuthSession();
+        setUser(null);
+      })
+      .finally(() => setAuthReady(true));
+  }, []);
+
+  useEffect(() => {
+    const logoutExpired = () => setUser(null);
+    window.addEventListener('auth-expired', logoutExpired);
+    return () => window.removeEventListener('auth-expired', logoutExpired);
   }, []);
 
   const loadProfiles = async () => {
@@ -126,6 +142,17 @@ export default function App() {
     clearAuthSession();
     setUser(null);
   };
+
+  if (!authReady) {
+    return (
+      <div className="login-shell">
+        <div className="login-panel">
+          <h1>Logistics ERP</h1>
+          <div className="status-banner">Checking login...</div>
+        </div>
+      </div>
+    );
+  }
 
   if (!user) return <LoginScreen onLogin={setUser} />;
 

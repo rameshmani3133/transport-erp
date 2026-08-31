@@ -435,6 +435,39 @@ th {
   gap: 10px;
 }
 
+.inline-edit-form {
+  display: grid;
+  grid-template-columns: minmax(140px, 180px) 1fr auto auto;
+  gap: 10px;
+  align-items: start;
+  padding: 12px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  background: #eff6ff;
+}
+
+.inline-edit-form input,
+.inline-edit-form select,
+.inline-edit-form textarea {
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 9px 10px;
+  font-size: 13px;
+  background: #fff;
+}
+
+.inline-edit-form textarea {
+  resize: vertical;
+}
+
+.log-edit-form {
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+}
+
+.log-edit-form textarea {
+  grid-column: 1 / -1;
+}
+
 .compact-list {
   display: grid;
   gap: 8px;

@@ -2,6 +2,25 @@
 
 const emptyUser = { name: '', email: '', password: '', role: 'USER', status: 'Active', companies: [] };
 const emptyCompany = { id: null, tenantKey: '', companyName: '', gstNumber: '', panNumber: '', address: '' };
+const emptyBackupEdit = { status: 'Success', message: '' };
+const emptyLogEdit = { action: '', tenantKey: '', entity: '', entityId: '', ipAddress: '', details: '' };
+
+function dateText(value) {
+  return value ? new Date(value).toLocaleString() : '-';
+}
+
+async function downloadExport(url, fileName) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error('Export failed.');
+  const blob = await response.blob();
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  URL.revokeObjectURL(link.href);
+  document.body.removeChild(link);
+}
 
 function profileScore(profile) {
   const isPlaceholder = String(profile.companyName || '').trim().toLowerCase() === 'default company';
@@ -32,6 +51,10 @@ export default function AdminUsers({ profiles = [], onCompaniesChanged }) {
   const [companyForm, setCompanyForm] = useState(emptyCompany);
   const [editingId, setEditingId] = useState(null);
   const [editingCompanyKey, setEditingCompanyKey] = useState(null);
+  const [editingBackupId, setEditingBackupId] = useState(null);
+  const [backupForm, setBackupForm] = useState(emptyBackupEdit);
+  const [editingLogId, setEditingLogId] = useState(null);
+  const [logForm, setLogForm] = useState(emptyLogEdit);
   const [message, setMessage] = useState('');
 
   const load = async () => {
@@ -160,6 +183,95 @@ export default function AdminUsers({ profiles = [], onCompaniesChanged }) {
     await load();
   };
 
+  const editBackup = (run) => {
+    setEditingBackupId(run.id);
+    setBackupForm({ status: run.status || 'Success', message: run.message || '' });
+  };
+
+  const saveBackup = async (event) => {
+    event.preventDefault();
+    const res = await fetch(`/api/admin/backups/${editingBackupId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(backupForm),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return setMessage(data.error || 'Failed to update backup.');
+    setEditingBackupId(null);
+    setBackupForm(emptyBackupEdit);
+    setMessage('Backup updated.');
+    await load();
+  };
+
+  const deleteBackup = async (run) => {
+    if (!confirm(`Delete backup #${run.id}? This will also remove its local/cloud backup files when available.`)) return;
+    const res = await fetch(`/api/admin/backups/${run.id}`, { method: 'DELETE' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return setMessage(data.error || 'Failed to delete backup.');
+    if (editingBackupId === run.id) {
+      setEditingBackupId(null);
+      setBackupForm(emptyBackupEdit);
+    }
+    setMessage('Backup deleted.');
+    await load();
+  };
+
+  const exportBackups = async () => {
+    try {
+      await downloadExport('/api/admin/backups/export', `backup-runs-${Date.now()}.csv`);
+    } catch (error) {
+      setMessage(error.message);
+    }
+  };
+
+  const editLog = (log) => {
+    setEditingLogId(log.id);
+    setLogForm({
+      action: log.action || '',
+      tenantKey: log.tenantKey || '',
+      entity: log.entity || '',
+      entityId: log.entityId || '',
+      ipAddress: log.ipAddress || '',
+      details: log.details ? JSON.stringify(log.details, null, 2) : '',
+    });
+  };
+
+  const saveLog = async (event) => {
+    event.preventDefault();
+    const res = await fetch(`/api/admin/audit-logs/${editingLogId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(logForm),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return setMessage(data.error || 'Failed to update audit log.');
+    setEditingLogId(null);
+    setLogForm(emptyLogEdit);
+    setMessage('Audit log updated.');
+    await load();
+  };
+
+  const deleteLog = async (log) => {
+    if (!confirm(`Delete audit log #${log.id}?`)) return;
+    const res = await fetch(`/api/admin/audit-logs/${log.id}`, { method: 'DELETE' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return setMessage(data.error || 'Failed to delete audit log.');
+    if (editingLogId === log.id) {
+      setEditingLogId(null);
+      setLogForm(emptyLogEdit);
+    }
+    setMessage('Audit log deleted.');
+    await load();
+  };
+
+  const exportLogs = async () => {
+    try {
+      await downloadExport('/api/admin/audit-logs/export', `audit-logs-${Date.now()}.csv`);
+    } catch (error) {
+      setMessage(error.message);
+    }
+  };
+
   return (
     <div className="admin-page">
       <div className="page-header-row">
@@ -265,29 +377,67 @@ export default function AdminUsers({ profiles = [], onCompaniesChanged }) {
       </section>
 
       <section className="admin-panel">
-        <h3>Backup Runs</h3>
+        <div className="page-header-row">
+          <h3>Backup Runs</h3>
+          <button type="button" onClick={exportBackups}>Export Backups</button>
+        </div>
+        {editingBackupId && (
+          <form className="inline-edit-form" onSubmit={saveBackup}>
+            <select value={backupForm.status} onChange={e => setBackupForm({ ...backupForm, status: e.target.value })}>
+              <option value="Success">Success</option>
+              <option value="Failed">Failed</option>
+              <option value="Archived">Archived</option>
+            </select>
+            <input placeholder="Message" value={backupForm.message} onChange={e => setBackupForm({ ...backupForm, message: e.target.value })} />
+            <button className="primary-btn" type="submit">Save Backup</button>
+            <button type="button" onClick={() => { setEditingBackupId(null); setBackupForm(emptyBackupEdit); }}>Cancel</button>
+          </form>
+        )}
         <div className="compact-list">
+          {backups.length === 0 && <div className="empty-state">No backup runs.</div>}
           {backups.map(run => (
             <div className="compact-row" key={run.id}>
               <div>
                 <strong>{run.status}</strong>
-                <span>{new Date(run.createdAt).toLocaleString()}</span>
-                <small>{run.localPath}{run.cloudPath ? ` | Cloud: ${run.cloudPath}` : ''}</small>
+                <span>{dateText(run.createdAt)}</span>
+                <small>{run.localPath || 'No local file'}{run.cloudPath ? ` | Cloud: ${run.cloudPath}` : ''}</small>
+                {run.message && <small>{run.message}</small>}
               </div>
+              <button onClick={() => editBackup(run)}>Edit</button>
+              <button className="danger-text" onClick={() => deleteBackup(run)}>Delete</button>
             </div>
           ))}
         </div>
       </section>
 
       <section className="admin-panel">
-        <h3>Recent Audit Logs</h3>
+        <div className="page-header-row">
+          <h3>Recent Audit Logs</h3>
+          <button type="button" onClick={exportLogs}>Export Logs</button>
+        </div>
+        {editingLogId && (
+          <form className="inline-edit-form log-edit-form" onSubmit={saveLog}>
+            <input placeholder="Action" value={logForm.action} onChange={e => setLogForm({ ...logForm, action: e.target.value })} required />
+            <input placeholder="Tenant" value={logForm.tenantKey} onChange={e => setLogForm({ ...logForm, tenantKey: e.target.value })} />
+            <input placeholder="Entity" value={logForm.entity} onChange={e => setLogForm({ ...logForm, entity: e.target.value })} />
+            <input placeholder="Entity ID" value={logForm.entityId} onChange={e => setLogForm({ ...logForm, entityId: e.target.value })} />
+            <input placeholder="IP Address" value={logForm.ipAddress} onChange={e => setLogForm({ ...logForm, ipAddress: e.target.value })} />
+            <textarea placeholder="Details JSON" value={logForm.details} onChange={e => setLogForm({ ...logForm, details: e.target.value })} rows={4} />
+            <button className="primary-btn" type="submit">Save Log</button>
+            <button type="button" onClick={() => { setEditingLogId(null); setLogForm(emptyLogEdit); }}>Cancel</button>
+          </form>
+        )}
         <div className="compact-list">
+          {logs.length === 0 && <div className="empty-state">No audit logs.</div>}
           {logs.map(log => (
             <div className="compact-row" key={log.id}>
               <div>
                 <strong>{log.action}</strong>
-                <span>{log.user?.email || 'system'} | {log.tenantKey || 'global'} | {new Date(log.createdAt).toLocaleString()}</span>
+                <span>{log.user?.email || 'system'} | {log.tenantKey || 'global'} | {dateText(log.createdAt)}</span>
+                <small>{log.entity || 'No entity'}{log.entityId ? ` #${log.entityId}` : ''}{log.ipAddress ? ` | ${log.ipAddress}` : ''}</small>
               </div>
+              <button onClick={() => editLog(log)}>Edit</button>
+              <button className="danger-text" onClick={() => deleteLog(log)}>Delete</button>
             </div>
           ))}
         </div>

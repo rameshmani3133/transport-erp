@@ -41,7 +41,7 @@ export function installTenantFetch() {
     if (window.__tenantFetchInstalled) return;
     const nativeFetch = window.fetch.bind(window);
 
-    window.fetch = (input, init = {}) => {
+    window.fetch = async (input, init = {}) => {
         const url = typeof input === 'string' ? input : input?.url;
         if (!url || !url.startsWith('/api')) {
             return nativeFetch(input, init);
@@ -51,7 +51,12 @@ export function installTenantFetch() {
         headers.set('X-Tenant-Key', getTenantKey());
         const token = getAuthToken();
         if (token) headers.set('Authorization', `Bearer ${token}`);
-        return nativeFetch(input, { ...init, headers });
+        const response = await nativeFetch(input, { ...init, headers });
+        if (response.status === 401 && !url.startsWith('/api/auth/login')) {
+            clearAuthSession();
+            window.dispatchEvent(new Event('auth-expired'));
+        }
+        return response;
     };
 
     window.__tenantFetchInstalled = true;
