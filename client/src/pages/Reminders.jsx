@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import DataTable from '../components/DataTable';
 
 const money = (value) => value == null ? '-' : `Rs.${Number(value || 0).toFixed(2)}`;
@@ -36,6 +36,7 @@ export default function Reminders() {
   const [newReminderEmail, setNewReminderEmail] = useState('');
   const [sending, setSending] = useState(false);
   const [savingEmail, setSavingEmail] = useState(false);
+  const [emailItems, setEmailItems] = useState([]);
 
   const loadReminders = async () => {
     setLoading(true);
@@ -54,12 +55,15 @@ export default function Reminders() {
   useEffect(() => { loadReminders().catch(() => setLoading(false)); }, []);
 
   const sendEmail = async () => {
+    if (!emailItems.length) return alert('No filtered reminders to send.');
+    if (!companyEmails.length) return alert('Add at least one reminder mail ID before sending.');
+    if (!confirm(`Send ${emailItems.length} filtered reminder(s) to ${companyEmails.length} recipient(s)?`)) return;
     setSending(true);
     try {
       const res = await fetch('/api/reminders/email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ daysAhead: 30 })
+        body: JSON.stringify({ itemIds: emailItems.map(item => item.id) })
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) return alert(data.error || 'Failed to send reminder email.');
@@ -106,6 +110,14 @@ export default function Reminders() {
     if (status !== 'All' && item.status !== status) return false;
     return true;
   }), [items, category, status]);
+
+  const handleFilteredDataChange = useCallback((nextItems) => {
+    setEmailItems(currentItems => {
+      const currentIds = currentItems.map(item => item.id).join('|');
+      const nextIds = nextItems.map(item => item.id).join('|');
+      return currentIds === nextIds ? currentItems : nextItems;
+    });
+  }, []);
 
   const counts = items.reduce((acc, item) => {
     acc[item.status] = (acc[item.status] || 0) + 1;
@@ -171,12 +183,12 @@ export default function Reminders() {
           disabled={sending}
           style={{ padding: '9px 14px', border: 0, borderRadius: '6px', background: sending ? '#94a3b8' : '#0f766e', color: 'white', cursor: sending ? 'not-allowed' : 'pointer', fontWeight: 800 }}
         >
-          {sending ? 'Sending...' : 'Send Email'}
+          {sending ? 'Sending...' : `Send Filtered Email (${emailItems.length})`}
         </button>
         <span style={{ alignSelf: 'center', color: '#64748b', fontSize: '13px', fontWeight: 700 }}>Auto: {triggerDays.join(', ')} days before due</span>
       </div>
 
-      <DataTable data={filtered} columns={columns} title="Reminder Register" enableColumnFilters />
+      <DataTable data={filtered} columns={columns} title="Reminder Register" enableColumnFilters onFilteredDataChange={handleFilteredDataChange} />
 
       {emailModalOpen && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: '20px' }}>

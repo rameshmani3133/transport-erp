@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 
 // Sort Icons
 const Icons = {
@@ -8,7 +8,7 @@ const Icons = {
     Sort: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>
 };
 
-export default function DataTable({ data, columns, title = "Records", enableColumnFilters = false }) {
+export default function DataTable({ data, columns, title = "Records", enableColumnFilters = false, onFilteredDataChange }) {
     const [search, setSearch] = useState('');
     const [columnFilters, setColumnFilters] = useState({});
     const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
@@ -70,6 +70,10 @@ export default function DataTable({ data, columns, title = "Records", enableColu
         }
         return filtered;
     }, [data, search, columnFilters, sortConfig, columns, enableColumnFilters]);
+
+    useEffect(() => {
+        onFilteredDataChange?.(processedData);
+    }, [processedData, onFilteredDataChange]);
 
     const updateColumnFilter = (key, value) => {
         setColumnFilters(prev => ({ ...prev, [key]: value }));
