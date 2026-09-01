@@ -150,6 +150,8 @@ router.post('/', async (req, res) => {
                     tenantKey: req.tenantKey,
                     description: text(d.description, null) || null,
                     sacCode: text(d.sacCode, null) || null,
+                    vendorCode: text(d.vendorCode, null) || null,
+                    poMigo: text(d.poMigo, null) || null,
                     showStatus: Boolean(d.showStatus),
                     date: toDate(d.date, new Date()),
                     dueDate: toDate(d.dueDate),
@@ -237,6 +239,8 @@ router.put('/:id', async (req, res) => {
                     invoiceNo,
                     description: text(d.description, null) || null,
                     sacCode: text(d.sacCode, null) || null,
+                    vendorCode: text(d.vendorCode, null) || null,
+                    poMigo: text(d.poMigo, null) || null,
                     showStatus: Boolean(d.showStatus),
                     date: toDate(d.date, existing.date),
                     dueDate: toDate(d.dueDate),
@@ -285,4 +289,3 @@ router.delete('/:id', async (req, res) => {
 });
 
 module.exports = router;
-

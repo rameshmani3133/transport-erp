@@ -16,6 +16,7 @@ export default function ClientMaster() {
   const initialState = {
       companyName: '',
       panNumber: '',
+      vendorCode: '',
       status: 'Active'
   };
 
@@ -39,6 +40,7 @@ export default function ClientMaster() {
       setFormData({
           companyName: comp.companyName || '',
           panNumber: comp.panNumber || '',
+          vendorCode: comp.vendorCode || '',
           status: comp.status || 'Active'
       });
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -89,6 +91,7 @@ export default function ClientMaster() {
   const columns = [
       { header: 'Company Name', key: 'companyName', render: (c) => <strong>{c.companyName}</strong> },
       { header: 'PAN Number', key: 'panNumber', render: (c) => c.panNumber || 'N/A' },
+      { header: 'Vendor Code', key: 'vendorCode', render: (c) => c.vendorCode || 'N/A' },
       { header: 'Status', key: 'status', render: (c) => (
           <span style={{ padding: '4px 8px', borderRadius: '4px', backgroundColor: c.status === 'Active' ? '#dcfce7' : '#f1f5f9', color: c.status === 'Active' ? '#16a34a' : '#64748b', fontSize: '11px', fontWeight: 'bold' }}>
               {c.status}
@@ -116,6 +119,7 @@ export default function ClientMaster() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '15px', marginBottom: '20px' }}>
               <FormGroup label="Company Name" name="companyName" value={formData.companyName} onChange={handleChange} required />
               <FormGroup label="PAN Number" name="panNumber" value={formData.panNumber} onChange={handleChange} />
+              <FormGroup label="Vendor Code" name="vendorCode" value={formData.vendorCode} onChange={handleChange} />
               
               <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
                   <label style={{ fontSize: '11px', fontWeight: '600', color: '#64748b' }}>Status</label>

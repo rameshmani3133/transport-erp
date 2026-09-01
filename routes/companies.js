@@ -31,6 +31,7 @@ router.post('/', async (req, res) => {
                     companyName: text(req.body.companyName),
                     tenantKey: req.tenantKey,
                     panNumber: req.body.panNumber || null,
+                    vendorCode: text(req.body.vendorCode, null) || null,
                     status: req.body.status || 'Active'
                 }
             });
@@ -55,6 +56,7 @@ router.put('/:id', async (req, res) => {
                 data: {
                     companyName: text(req.body.companyName),
                     panNumber: req.body.panNumber || null,
+                    vendorCode: text(req.body.vendorCode, null) || null,
                     status: req.body.status || 'Active'
                 }
             });

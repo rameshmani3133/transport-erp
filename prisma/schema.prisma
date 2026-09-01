@@ -90,6 +90,7 @@ model ClientCompany {
   deletedAt       DateTime?
   companyName   String
   panNumber     String?
+  vendorCode    String?
   status        String            @default("Active")
   
   locations     BillingLocation[]
@@ -275,6 +276,8 @@ model Invoice {
   invoiceNo       String
   description     String?
   sacCode         String?
+  vendorCode      String?
+  poMigo          String?
   showStatus      Boolean           @default(false)
   date            DateTime          @default(now())
   dueDate         DateTime?
@@ -530,6 +533,5 @@ model BackupRun {
   message     String?
   createdAt   DateTime  @default(now())
 }
-
 
 

@@ -51,6 +51,8 @@ const initialInvoice = {
   invoiceNo: '',
   description: '',
   sacCode: '',
+  vendorCode: '',
+  poMigo: '',
   showStatus: false,
   date: today(),
   dueDate: '',
@@ -186,6 +188,8 @@ export default function Billing() {
       invoiceNo: invoice.invoiceNo || '',
       description: invoice.description || '',
       sacCode: invoice.sacCode || '',
+      vendorCode: invoice.vendorCode || '',
+      poMigo: invoice.poMigo || '',
       showStatus: Boolean(invoice.showStatus),
       date: inputDate(invoice.date),
       dueDate: inputDate(invoice.dueDate),
@@ -266,21 +270,18 @@ export default function Billing() {
     const clientName = invoice.location?.company?.companyName || 'Client';
     const locationName = invoice.location?.locationName || '-';
     const clientAddress = invoice.location?.address || '';
-    const taxPercent = num(invoice.subTotal) > 0
-      ? (((num(invoice.cgst) + num(invoice.sgst) + num(invoice.igst)) / num(invoice.subTotal)) * 100).toFixed(2)
-      : '0.00';
     const taxType = num(invoice.igst) > 0 ? 'IGST' : 'CGST + SGST';
     const cgstPercent = num(invoice.subTotal) > 0 ? ((num(invoice.cgst) / num(invoice.subTotal)) * 100).toFixed(2) : '0.00';
     const sgstPercent = num(invoice.subTotal) > 0 ? ((num(invoice.sgst) / num(invoice.subTotal)) * 100).toFixed(2) : '0.00';
     const igstPercent = num(invoice.subTotal) > 0 ? ((num(invoice.igst) / num(invoice.subTotal)) * 100).toFixed(2) : '0.00';
     const serviceDescription = invoice.description || `Freight charges for ${invoiceTrips.length} trip${invoiceTrips.length === 1 ? '' : 's'} as per annexure`;
     const sacCode = invoice.sacCode || '';
+    const vendorCode = invoice.vendorCode || invoice.location?.company?.vendorCode || '';
+    const poMigo = invoice.poMigo || '';
     const statusRow = invoice.showStatus ? `<div class="meta-row"><strong>Status</strong><span>${escapeHtml(invoice.status || '-')}</span></div>` : '';
     const tripRows = invoiceTrips.map((trip, index) => `
       <tr>
         <td class="center">${index + 1}</td>
-        <td>${escapeHtml(serviceDescription)}</td>
-        <td>${escapeHtml(sacCode || '-')}</td>
         <td>${escapeHtml(formatDate(trip.date))}</td>
         <td>${escapeHtml(trip.vehicle?.regNo || '-')}</td>
         <td>${escapeHtml(trip.route?.fromLocation || '-')}</td>
@@ -322,9 +323,9 @@ export default function Billing() {
             .line { font-size: 12px; line-height: 1.45; margin-top: 3px; }
             .meta-row { display: grid; grid-template-columns: 96px 1fr; gap: 8px; font-size: 12px; line-height: 1.6; }
             .meta-row strong { color: #334155; }
-            .service-table, .tax-table, .totals { width: 100%; border-collapse: collapse; font-size: 12px; }
-            .service-table th, .service-table td, .tax-table th, .tax-table td, .totals td { border: 1px solid #111827; padding: 7px; vertical-align: top; }
-            .service-table th, .tax-table th { background: #f1f5f9; font-size: 10px; text-transform: uppercase; }
+            .service-table, .totals { width: 100%; border-collapse: collapse; font-size: 12px; }
+            .service-table th, .service-table td, .totals td { border: 1px solid #111827; padding: 7px; vertical-align: top; }
+            .service-table th { background: #f1f5f9; font-size: 10px; text-transform: uppercase; }
             .section { padding: 12px; border-bottom: 1px solid #111827; }
             .summary-grid { display: grid; grid-template-columns: 1fr 330px; gap: 14px; padding: 12px; border-bottom: 1px solid #111827; }
             .totals td:first-child { font-weight: 700; }
@@ -361,7 +362,6 @@ export default function Billing() {
                 <div class="party">
                   <div class="label">Bill To</div>
                   <div class="name">${escapeHtml(clientName)}</div>
-                  <div class="line"><strong>Billing Location:</strong> ${escapeHtml(locationName)}</div>
                   <div class="line">${escapeHtml(clientAddress || '-')}</div>
                   <div class="line"><strong>GSTIN:</strong> ${escapeHtml(invoice.location?.gstNumber || '-')}</div>
                   <div class="line"><strong>PAN:</strong> ${escapeHtml(invoice.location?.company?.panNumber || '-')}</div>
@@ -380,44 +380,23 @@ export default function Billing() {
                   <thead>
                     <tr>
                       <th style="width:8%">S.No</th>
-                      <th style="width:14%">SAC Code</th>
                       <th>Description</th>
-                      <th style="width:14%">Trips</th>
-                      <th style="width:18%">Taxable Value</th>
+                      <th style="width:12%">SAC Code</th>
+                      <th style="width:14%">Vendor Code</th>
+                      <th style="width:14%">PO / MIGO</th>
+                      <th style="width:9%">Trips</th>
+                      <th style="width:16%">Taxable Value</th>
                     </tr>
                   </thead>
                   <tbody>
                     <tr>
                       <td class="center">1</td>
-                      <td class="center">${escapeHtml(sacCode || '-')}</td>
                       <td>${escapeHtml(serviceDescription)}</td>
+                      <td class="center">${escapeHtml(sacCode || '-')}</td>
+                      <td>${escapeHtml(vendorCode || '-')}</td>
+                      <td>${escapeHtml(poMigo || '-')}</td>
                       <td class="center">${invoiceTrips.length}</td>
                       <td class="right">${money(invoice.subTotal)}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-
-              <div class="section">
-                <table class="tax-table">
-                  <thead>
-                    <tr>
-                      <th>Taxable Amount</th>
-                      <th>GST %</th>
-                      <th>CGST</th>
-                      <th>SGST</th>
-                      <th>IGST</th>
-                      <th>Other Charges</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td class="right">${money(invoice.subTotal)}</td>
-                      <td class="center">${taxPercent}%</td>
-                      <td class="right">${money(invoice.cgst)}</td>
-                      <td class="right">${money(invoice.sgst)}</td>
-                      <td class="right">${money(invoice.igst)}</td>
-                      <td class="right">${money(invoice.otherCharges)}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -481,8 +460,6 @@ export default function Billing() {
               <thead>
                 <tr>
                   <th style="width:3%">S.No</th>
-                  <th style="width:8%">Description</th>
-                  <th style="width:5%">SAC Code</th>
                   <th style="width:7%">Loading Date</th>
                   <th style="width:8%">Truck Number</th>
                   <th style="width:8%">From</th>
@@ -498,7 +475,13 @@ export default function Billing() {
                   <th style="width:8%">Balance</th>
                 </tr>
               </thead>
-              <tbody>${tripRows}</tbody>
+              <tbody>
+                ${tripRows}
+                <tr class="strong">
+                  <td colspan="13" class="right">Balance Amount</td>
+                  <td class="right">${money(invoice.balanceAmount)}</td>
+                </tr>
+              </tbody>
             </table>
             <div class="footer">
               <span>${escapeHtml(invoice.invoiceNo || '-')}</span>
@@ -532,6 +515,8 @@ export default function Billing() {
     { header: 'Location', key: 'location.locationName', render: (inv) => inv.location?.locationName || 'N/A' },
     { header: 'Description', key: 'description', render: (inv) => inv.description || '-' },
     { header: 'SAC Code', key: 'sacCode', render: (inv) => inv.sacCode || '-' },
+    { header: 'Vendor Code', key: 'vendorCode', render: (inv) => inv.vendorCode || inv.location?.company?.vendorCode || '-' },
+    { header: 'PO / MIGO', key: 'poMigo', render: (inv) => inv.poMigo || '-' },
     { header: 'Trips', key: 'trips', render: (inv) => inv.trips?.length || 0 },
     { header: 'Total Amount', key: 'grandTotal', render: (inv) => <strong style={{ color: '#16a34a' }}>{money(inv.grandTotal)}</strong> },
     { header: 'Balance', key: 'balanceAmount', render: (inv) => <strong style={{ color: num(inv.balanceAmount) > 0 ? '#b45309' : '#16a34a' }}>{money(inv.balanceAmount)}</strong> },
@@ -554,7 +539,11 @@ export default function Billing() {
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginBottom: '25px' }}>
           <Field label="Billing Location">
-            <select name="locationId" value={formData.locationId} onChange={(e) => { setFormData({ ...formData, locationId: e.target.value }); setSelectedTripIds([]); }} required style={fieldStyle}>
+            <select name="locationId" value={formData.locationId} onChange={(e) => {
+              const location = locations.find(item => String(item.id) === String(e.target.value));
+              setFormData({ ...formData, locationId: e.target.value, vendorCode: location?.company?.vendorCode || '' });
+              setSelectedTripIds([]);
+            }} required style={fieldStyle}>
               <option value="">-- Select Location --</option>
               {locations.map(l => <option key={l.id} value={l.id}>{l.locationName} ({l.company?.companyName})</option>)}
             </select>
@@ -589,6 +578,12 @@ export default function Billing() {
           </Field>
           <Field label="SAC Code">
             <input type="text" name="sacCode" value={formData.sacCode} onChange={e => setFormData({ ...formData, sacCode: e.target.value })} placeholder="996511" style={fieldStyle} />
+          </Field>
+          <Field label="Vendor Code">
+            <input type="text" name="vendorCode" value={formData.vendorCode} onChange={e => setFormData({ ...formData, vendorCode: e.target.value })} placeholder="Client vendor code" style={fieldStyle} />
+          </Field>
+          <Field label="PO / MIGO">
+            <input type="text" name="poMigo" value={formData.poMigo} onChange={e => setFormData({ ...formData, poMigo: e.target.value })} placeholder="PO or MIGO reference" style={fieldStyle} />
           </Field>
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px', paddingBottom: '8px' }}>
             <input id="showStatus" type="checkbox" checked={formData.showStatus} onChange={e => setFormData({ ...formData, showStatus: e.target.checked })} />
