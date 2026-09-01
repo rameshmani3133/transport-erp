@@ -267,6 +267,9 @@ model Invoice {
   tenantKey       String            @default("default")
   deletedAt       DateTime?
   invoiceNo       String
+  description     String?
+  sacCode         String?
+  showStatus      Boolean           @default(false)
   date            DateTime          @default(now())
   dueDate         DateTime?
   locationId      Int

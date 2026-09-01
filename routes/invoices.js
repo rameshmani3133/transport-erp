@@ -2,7 +2,7 @@ const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 const { withTenant } = require('./tenant');
 const { ensureStandardAccountingAccounts, ensureClientDieselAccount } = require('../lib/accountingAccounts');
-const { toNumber, toInt, toRequiredInt, toDate } = require('../lib/coerce');
+const { toNumber, toInt, toRequiredInt, toDate, text } = require('../lib/coerce');
 const router = express.Router();
 const prisma = new PrismaClient();
 
@@ -148,6 +148,9 @@ router.post('/', async (req, res) => {
                 data: {
                     invoiceNo,
                     tenantKey: req.tenantKey,
+                    description: text(d.description, null) || null,
+                    sacCode: text(d.sacCode, null) || null,
+                    showStatus: Boolean(d.showStatus),
                     date: toDate(d.date, new Date()),
                     dueDate: toDate(d.dueDate),
                     locationId,
@@ -232,6 +235,9 @@ router.put('/:id', async (req, res) => {
                 where: { id: invId },
                 data: {
                     invoiceNo,
+                    description: text(d.description, null) || null,
+                    sacCode: text(d.sacCode, null) || null,
+                    showStatus: Boolean(d.showStatus),
                     date: toDate(d.date, existing.date),
                     dueDate: toDate(d.dueDate),
                     locationId,

@@ -6,6 +6,7 @@ const num = (value) => Number(value || 0);
 const money = (value) => `Rs.${num(value).toFixed(2)}`;
 const formatDate = (value) => value ? new Date(value).toLocaleDateString() : '-';
 const inputDate = (value) => value ? new Date(value).toISOString().split('T')[0] : '';
+const titleCase = (value) => String(value || '').toLowerCase().replace(/\b\w/g, char => char.toUpperCase());
 const netWeight = (trip) => Math.max(num(trip.billWeight), num(trip.guaranteeWeight));
 const freightAmount = (trip) => Math.max(num(trip.totalClientBill) - num(trip.clientExtraSizeCharge) - num(trip.haltingCharge), 0);
 const freightRateLabel = (trip) => trip.clientCalcType === 'Fixed'
@@ -23,8 +24,34 @@ const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => 
   "'": '&#39;'
 }[char]));
 
+function amountInWords(value) {
+  const amount = Math.round(num(value));
+  if (!amount) return 'Rupees Zero Only';
+  const ones = ['', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
+  const tens = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
+  const belowHundred = n => n < 20 ? ones[n] : `${tens[Math.floor(n / 10)]}${n % 10 ? ` ${ones[n % 10]}` : ''}`;
+  const belowThousand = n => {
+    const hundred = Math.floor(n / 100);
+    const rest = n % 100;
+    return `${hundred ? `${ones[hundred]} hundred${rest ? ' ' : ''}` : ''}${rest ? belowHundred(rest) : ''}`;
+  };
+  const parts = [];
+  let rest = amount;
+  const crore = Math.floor(rest / 10000000); rest %= 10000000;
+  const lakh = Math.floor(rest / 100000); rest %= 100000;
+  const thousand = Math.floor(rest / 1000); rest %= 1000;
+  if (crore) parts.push(`${belowThousand(crore)} crore`);
+  if (lakh) parts.push(`${belowThousand(lakh)} lakh`);
+  if (thousand) parts.push(`${belowThousand(thousand)} thousand`);
+  if (rest) parts.push(belowThousand(rest));
+  return `Rupees ${titleCase(parts.join(' '))} Only`;
+}
+
 const initialInvoice = {
   invoiceNo: '',
+  description: '',
+  sacCode: '',
+  showStatus: false,
   date: today(),
   dueDate: '',
   locationId: '',
@@ -157,6 +184,9 @@ export default function Billing() {
     setFormData({
       ...initialInvoice,
       invoiceNo: invoice.invoiceNo || '',
+      description: invoice.description || '',
+      sacCode: invoice.sacCode || '',
+      showStatus: Boolean(invoice.showStatus),
       date: inputDate(invoice.date),
       dueDate: inputDate(invoice.dueDate),
       locationId: invoice.locationId ? String(invoice.locationId) : '',
@@ -240,10 +270,17 @@ export default function Billing() {
       ? (((num(invoice.cgst) + num(invoice.sgst) + num(invoice.igst)) / num(invoice.subTotal)) * 100).toFixed(2)
       : '0.00';
     const taxType = num(invoice.igst) > 0 ? 'IGST' : 'CGST + SGST';
-    const serviceDescription = `Freight charges for ${invoiceTrips.length} trip${invoiceTrips.length === 1 ? '' : 's'} as per annexure`;
+    const cgstPercent = num(invoice.subTotal) > 0 ? ((num(invoice.cgst) / num(invoice.subTotal)) * 100).toFixed(2) : '0.00';
+    const sgstPercent = num(invoice.subTotal) > 0 ? ((num(invoice.sgst) / num(invoice.subTotal)) * 100).toFixed(2) : '0.00';
+    const igstPercent = num(invoice.subTotal) > 0 ? ((num(invoice.igst) / num(invoice.subTotal)) * 100).toFixed(2) : '0.00';
+    const serviceDescription = invoice.description || `Freight charges for ${invoiceTrips.length} trip${invoiceTrips.length === 1 ? '' : 's'} as per annexure`;
+    const sacCode = invoice.sacCode || '';
+    const statusRow = invoice.showStatus ? `<div class="meta-row"><strong>Status</strong><span>${escapeHtml(invoice.status || '-')}</span></div>` : '';
     const tripRows = invoiceTrips.map((trip, index) => `
       <tr>
         <td class="center">${index + 1}</td>
+        <td>${escapeHtml(serviceDescription)}</td>
+        <td>${escapeHtml(sacCode || '-')}</td>
         <td>${escapeHtml(formatDate(trip.date))}</td>
         <td>${escapeHtml(trip.vehicle?.regNo || '-')}</td>
         <td>${escapeHtml(trip.route?.fromLocation || '-')}</td>
@@ -305,7 +342,6 @@ export default function Billing() {
             .right { text-align: right; }
             .strong { font-weight: 800; }
             .footer { position: fixed; bottom: 4mm; left: 7mm; right: 7mm; display: flex; justify-content: space-between; color: #64748b; font-size: 10px; }
-            .page-number:after { content: counter(page); }
           </style>
         </head>
         <body>
@@ -335,7 +371,7 @@ export default function Billing() {
                   <div class="meta-row"><strong>Invoice Date</strong><span>${escapeHtml(formatDate(invoice.date))}</span></div>
                   <div class="meta-row"><strong>Due Date</strong><span>${escapeHtml(formatDate(invoice.dueDate))}</span></div>
                   <div class="meta-row"><strong>Tax Type</strong><span>${escapeHtml(taxType)}</span></div>
-                  <div class="meta-row"><strong>Status</strong><span>${escapeHtml(invoice.status || '-')}</span></div>
+                  ${statusRow}
                 </div>
               </div>
 
@@ -344,6 +380,7 @@ export default function Billing() {
                   <thead>
                     <tr>
                       <th style="width:8%">S.No</th>
+                      <th style="width:14%">SAC Code</th>
                       <th>Description</th>
                       <th style="width:14%">Trips</th>
                       <th style="width:18%">Taxable Value</th>
@@ -352,6 +389,7 @@ export default function Billing() {
                   <tbody>
                     <tr>
                       <td class="center">1</td>
+                      <td class="center">${escapeHtml(sacCode || '-')}</td>
                       <td>${escapeHtml(serviceDescription)}</td>
                       <td class="center">${invoiceTrips.length}</td>
                       <td class="right">${money(invoice.subTotal)}</td>
@@ -392,14 +430,15 @@ export default function Billing() {
                   <div class="amount-words">
                     <div class="label">Amount Chargeable</div>
                     <strong>${money(invoice.grandTotal)}</strong>
+                    <div style="margin-top:6px">${escapeHtml(amountInWords(invoice.grandTotal))}</div>
                   </div>
                 </div>
                 <table class="totals">
                   <tbody>
                     <tr><td>Subtotal</td><td class="right">${money(invoice.subTotal)}</td></tr>
-                    <tr><td>CGST</td><td class="right">${money(invoice.cgst)}</td></tr>
-                    <tr><td>SGST</td><td class="right">${money(invoice.sgst)}</td></tr>
-                    <tr><td>IGST</td><td class="right">${money(invoice.igst)}</td></tr>
+                    <tr><td>CGST (${cgstPercent}%)</td><td class="right">${money(invoice.cgst)}</td></tr>
+                    <tr><td>SGST (${sgstPercent}%)</td><td class="right">${money(invoice.sgst)}</td></tr>
+                    <tr><td>IGST (${igstPercent}%)</td><td class="right">${money(invoice.igst)}</td></tr>
                     <tr><td>Other Charges</td><td class="right">${money(invoice.otherCharges)}</td></tr>
                     <tr class="grand"><td>Grand Total</td><td class="right">${money(invoice.grandTotal)}</td></tr>
                     <tr><td>Advance Received</td><td class="right">${money(invoice.advanceReceived)}</td></tr>
@@ -427,6 +466,7 @@ export default function Billing() {
                 </div>
               </div>
             </div>
+            <p class="muted" style="padding: 4px 12px 0; text-align:right">Page 1</p>
           </section>
 
           <section class="annexure-page">
@@ -435,12 +475,14 @@ export default function Billing() {
                 <h2>Annexure</h2>
                 <p class="muted">${escapeHtml(supplierName)} | ${escapeHtml(invoice.invoiceNo || '-')} | ${escapeHtml(clientName)} - ${escapeHtml(locationName)}</p>
               </div>
-              <p class="muted">Page <span class="page-number"></span></p>
+              <p class="muted">Page 2</p>
             </div>
             <table class="invoice-table">
               <thead>
                 <tr>
                   <th style="width:3%">S.No</th>
+                  <th style="width:8%">Description</th>
+                  <th style="width:5%">SAC Code</th>
                   <th style="width:7%">Loading Date</th>
                   <th style="width:8%">Truck Number</th>
                   <th style="width:8%">From</th>
@@ -460,7 +502,7 @@ export default function Billing() {
             </table>
             <div class="footer">
               <span>${escapeHtml(invoice.invoiceNo || '-')}</span>
-              <span>Page <span class="page-number"></span></span>
+              <span>Page 2</span>
             </div>
           </section>
           <script>window.onload=()=>{window.print();window.close()}</script>
@@ -488,6 +530,8 @@ export default function Billing() {
     { header: 'Invoice No', key: 'invoiceNo', render: (inv) => <strong>{inv.invoiceNo}</strong> },
     { header: 'Date', key: 'date', render: (inv) => formatDate(inv.date) },
     { header: 'Location', key: 'location.locationName', render: (inv) => inv.location?.locationName || 'N/A' },
+    { header: 'Description', key: 'description', render: (inv) => inv.description || '-' },
+    { header: 'SAC Code', key: 'sacCode', render: (inv) => inv.sacCode || '-' },
     { header: 'Trips', key: 'trips', render: (inv) => inv.trips?.length || 0 },
     { header: 'Total Amount', key: 'grandTotal', render: (inv) => <strong style={{ color: '#16a34a' }}>{money(inv.grandTotal)}</strong> },
     { header: 'Balance', key: 'balanceAmount', render: (inv) => <strong style={{ color: num(inv.balanceAmount) > 0 ? '#b45309' : '#16a34a' }}>{money(inv.balanceAmount)}</strong> },
@@ -543,6 +587,18 @@ export default function Billing() {
           <Field label="Due Date">
             <input type="date" name="dueDate" value={formData.dueDate} onChange={e => setFormData({ ...formData, dueDate: e.target.value })} style={fieldStyle} />
           </Field>
+          <Field label="SAC Code">
+            <input type="text" name="sacCode" value={formData.sacCode} onChange={e => setFormData({ ...formData, sacCode: e.target.value })} placeholder="996511" style={fieldStyle} />
+          </Field>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px', paddingBottom: '8px' }}>
+            <input id="showStatus" type="checkbox" checked={formData.showStatus} onChange={e => setFormData({ ...formData, showStatus: e.target.checked })} />
+            <label htmlFor="showStatus" style={{ fontSize: '12px', fontWeight: 700, color: '#475569' }}>Show status on invoice</label>
+          </div>
+          <div style={{ gridColumn: '1 / -1' }}>
+            <Field label="Invoice Description">
+              <input type="text" name="description" value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} placeholder="Freight charges as per annexure" style={fieldStyle} />
+            </Field>
+          </div>
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px', marginBottom: '15px', gap: '12px', flexWrap: 'wrap' }}>

@@ -137,6 +137,7 @@ export default function LocationMaster() {
                   <label style={{ fontSize: '11px', fontWeight: '600', color: '#64748b' }}>Invoice Format</label>
                   <select name="invoiceFormat" value={formData.invoiceFormat} onChange={handleChange} required style={{ padding: '8px', borderRadius: '4px', border: '1px solid #cbd5e1', fontSize:'13px' }}>
                       <option value="Standard">Standard</option>
+                      <option value="LPG Bill">LPG Bill</option>
                       <option value="Detailed">Detailed</option>
                   </select>
               </div>
