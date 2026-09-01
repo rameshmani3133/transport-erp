@@ -1,12 +1,17 @@
 ﻿import React, { useEffect, useMemo, useState } from 'react';
 
-const emptyUser = { name: '', email: '', password: '', role: 'USER', status: 'Active', companies: [] };
-const emptyCompany = { id: null, tenantKey: '', companyName: '', gstNumber: '', panNumber: '', address: '' };
+const emptyUser = { name: '', email: '', password: '', role: 'USER', status: 'Active', companies: [], reminderEmails: '' };
+const emptyCompany = { id: null, tenantKey: '', companyName: '', gstNumber: '', panNumber: '', address: '', reminderEmails: '' };
 const emptyBackupEdit = { status: 'Success', message: '' };
 const emptyLogEdit = { action: '', tenantKey: '', entity: '', entityId: '', ipAddress: '', details: '' };
 
 function dateText(value) {
   return value ? new Date(value).toLocaleString() : '-';
+}
+
+function normalizeEmails(value) {
+  const list = Array.isArray(value) ? value : String(value || '').split(',');
+  return [...new Set(list.map(item => String(item || '').trim().toLowerCase()).filter(item => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(item)))];
 }
 
 async function readJsonResponse(response) {
@@ -132,7 +137,7 @@ export default function AdminUsers({ profiles = [], onCompaniesChanged }) {
 
   const editUser = (user) => {
     setEditingId(user.id);
-    setForm({ name: user.name, email: user.email, password: '', role: user.role, status: user.status, companies: user.companies || [] });
+    setForm({ name: user.name, email: user.email, password: '', role: user.role, status: user.status, companies: user.companies || [], reminderEmails: normalizeEmails(user.reminderEmails).join(', ') });
   };
 
   const editCompany = (profile) => {
@@ -144,6 +149,7 @@ export default function AdminUsers({ profiles = [], onCompaniesChanged }) {
       gstNumber: profile.gstNumber || '',
       panNumber: profile.panNumber || '',
       address: profile.address || '',
+      reminderEmails: normalizeEmails(profile.reminderEmails).join(', '),
     });
   };
 
@@ -318,6 +324,7 @@ export default function AdminUsers({ profiles = [], onCompaniesChanged }) {
           <h3>{editingId ? 'Edit User' : 'Create User'}</h3>
           <input placeholder="Name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required />
           <input placeholder="Email" type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} required disabled={!!editingId} />
+          <input placeholder="Reminder mail IDs, comma separated" value={form.reminderEmails || ''} onChange={e => setForm({ ...form, reminderEmails: e.target.value })} />
           <input placeholder={editingId ? 'New password optional' : 'Password'} type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} required={!editingId} minLength={form.password || !editingId ? 10 : undefined} />
           <small>{editingId ? 'Leave blank to keep the current password; a new password needs at least 10 characters.' : 'Password must contain at least 10 characters.'}</small>
           <select value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}>
@@ -351,6 +358,7 @@ export default function AdminUsers({ profiles = [], onCompaniesChanged }) {
                   <strong>{user.name}</strong>
                   <span>{user.email} | {user.role} | {user.status}</span>
                   <small>{(user.companies || []).join(', ') || 'No companies assigned'}</small>
+                  <small>{normalizeEmails(user.reminderEmails).length ? `Reminder mail: ${normalizeEmails(user.reminderEmails).join(', ')}` : 'No user reminder mail IDs'}</small>
                 </div>
                 <button onClick={() => editUser(user)}>Edit</button>
                 <button className="danger-text" onClick={() => deleteUser(user.id)}>Delete</button>
@@ -386,6 +394,7 @@ export default function AdminUsers({ profiles = [], onCompaniesChanged }) {
           <input placeholder="GST Number" value={companyForm.gstNumber} onChange={e => setCompanyForm({ ...companyForm, gstNumber: e.target.value })} />
           <input placeholder="PAN Number" value={companyForm.panNumber} onChange={e => setCompanyForm({ ...companyForm, panNumber: e.target.value })} />
           <input placeholder="Address" value={companyForm.address} onChange={e => setCompanyForm({ ...companyForm, address: e.target.value })} />
+          <input placeholder="Reminder mail IDs, comma separated" value={companyForm.reminderEmails || ''} onChange={e => setCompanyForm({ ...companyForm, reminderEmails: e.target.value })} />
           <div className="form-actions">
             <button className="primary-btn" type="submit">Save Company</button>
             {editingCompanyKey && <button type="button" onClick={cancelCompanyEdit}>Cancel</button>}
@@ -401,6 +410,7 @@ export default function AdminUsers({ profiles = [], onCompaniesChanged }) {
                   <strong>{profile.companyName || profile.tenantKey}</strong>
                   <span>{profile.tenantKey}</span>
                   <small>{profile.gstNumber || profile.panNumber || 'No tax details saved'}</small>
+                  <small>{normalizeEmails(profile.reminderEmails).length ? `Reminder mail: ${normalizeEmails(profile.reminderEmails).join(', ')}` : 'No company reminder mail IDs'}</small>
                 </div>
                 <button onClick={() => editCompany(profile)}>Edit</button>
                 <button className="danger-text" onClick={() => deleteCompany(profile.tenantKey)}>Delete</button>

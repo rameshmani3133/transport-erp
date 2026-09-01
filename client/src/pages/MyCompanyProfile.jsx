@@ -8,14 +8,21 @@ const FormGroup = ({ label, name, value, onChange, required=false }) => (
     </div>
 );
 
+function normalizeEmails(value) {
+    const list = Array.isArray(value) ? value : String(value || '').split(',');
+    return [...new Set(list.map(item => String(item || '').trim().toLowerCase()).filter(item => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(item)))];
+}
+
 export default function MyCompanyProfile({ isSuperAdmin = false }) {
     const initialState = {
         tenantKey: '', companyName: '', address: '', gstNumber: '', panNumber: '',
-        bankName: '', accountNumber: '', ifscCode: '', signatoryRole: 'Authorized Signatory'
+        bankName: '', accountNumber: '', ifscCode: '', signatoryRole: 'Authorized Signatory',
+        reminderEmails: []
     };
     
     const [formData, setFormData] = useState(initialState);
     const [isLoading, setIsLoading] = useState(true);
+    const [newReminderEmail, setNewReminderEmail] = useState('');
 
     // Fetch on page load
     useEffect(() => {
@@ -26,7 +33,7 @@ export default function MyCompanyProfile({ isSuperAdmin = false }) {
                     const data = await res.json();
                     // If the database returns a profile, merge it so we don't lose default fields
                     if (data && data.id) {
-                        setFormData(prev => ({ ...prev, ...data }));
+                        setFormData(prev => ({ ...prev, ...data, reminderEmails: normalizeEmails(data.reminderEmails) }));
                     }
                 }
             } catch (err) {
@@ -39,6 +46,36 @@ export default function MyCompanyProfile({ isSuperAdmin = false }) {
     }, []);
 
     const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
+
+    const addReminderEmail = async () => {
+        const email = normalizeEmails([newReminderEmail])[0];
+        if (!email) return alert('Enter a valid reminder email.');
+        if (!formData.id) {
+            setFormData(prev => ({ ...prev, reminderEmails: normalizeEmails([...(prev.reminderEmails || []), email]) }));
+            setNewReminderEmail('');
+            return;
+        }
+        const res = await fetch('/api/my-company/reminder-emails', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return alert(data.error || 'Failed to add reminder email.');
+        setFormData(prev => ({ ...prev, ...data, reminderEmails: normalizeEmails(data.reminderEmails) }));
+        setNewReminderEmail('');
+    };
+
+    const removeReminderEmail = async (email) => {
+        if (!formData.id) {
+            setFormData(prev => ({ ...prev, reminderEmails: normalizeEmails(prev.reminderEmails).filter(item => item !== email) }));
+            return;
+        }
+        const res = await fetch(`/api/my-company/reminder-emails/${encodeURIComponent(email)}`, { method: 'DELETE' });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) return alert(data.error || 'Failed to remove reminder email.');
+        setFormData(prev => ({ ...prev, ...data, reminderEmails: normalizeEmails(data.reminderEmails) }));
+    };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -53,9 +90,9 @@ export default function MyCompanyProfile({ isSuperAdmin = false }) {
             
             // Instantly update the form with the confirmed database record
             const savedData = await response.json();
-            setFormData(prev => ({ ...prev, ...savedData }));
+            setFormData(prev => ({ ...prev, ...savedData, reminderEmails: normalizeEmails(savedData.reminderEmails) }));
             
-            alert("âœ… Company Profile saved successfully!");
+            alert("Company Profile saved successfully!");
         } catch (error) {
             alert(error.message);
         }
@@ -102,6 +139,31 @@ export default function MyCompanyProfile({ isSuperAdmin = false }) {
                             <option value="Partner">Partner</option>
                             <option value="Director">Director</option>
                         </select>
+                    </div>
+                </div>
+
+                <h3 style={{ fontSize: '14px', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px', marginBottom: '15px' }}>4. Reminder Emails</h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '25px' }}>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                        <input
+                            type="text"
+                            value={newReminderEmail}
+                            onChange={e => setNewReminderEmail(e.target.value)}
+                            placeholder="person@company.com"
+                            style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize:'13px', minWidth: '260px' }}
+                        />
+                        <button type="button" onClick={addReminderEmail} style={{ padding: '8px 12px', backgroundColor: '#0f766e', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>
+                            Add Mail ID
+                        </button>
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                        {normalizeEmails(formData.reminderEmails).length === 0 && <span style={{ color: '#64748b', fontSize: '13px' }}>No reminder mail IDs added.</span>}
+                        {normalizeEmails(formData.reminderEmails).map(email => (
+                            <span key={email} style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: '6px', background: '#f8fafc', fontSize: '13px' }}>
+                                {email}
+                                <button type="button" onClick={() => removeReminderEmail(email)} style={{ border: 0, background: 'transparent', color: '#dc2626', cursor: 'pointer', fontWeight: 800 }}>x</button>
+                            </span>
+                        ))}
                     </div>
                 </div>
 

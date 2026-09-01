@@ -12,6 +12,11 @@ const prisma = new PrismaClient();
 
 router.use(requireSuperAdmin);
 
+function cleanEmails(value) {
+  const list = Array.isArray(value) ? value : String(value || '').split(',');
+  return [...new Set(list.map(item => String(item || '').trim().toLowerCase()).filter(item => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(item)))];
+}
+
 router.get('/users', async (req, res) => {
   try {
     const users = await prisma.user.findMany({
@@ -67,6 +72,7 @@ router.post('/users', async (req, res) => {
         name,
         role: req.body.role === 'SUPERADMIN' ? 'SUPERADMIN' : 'USER',
         status: req.body.status === 'Inactive' ? 'Inactive' : 'Active',
+        reminderEmails: cleanEmails(req.body.reminderEmails),
         passwordHash: await hashPassword(password),
         companyAccess: { create: companyKeys.map(tenantKey => ({ tenantKey })) },
       },
@@ -96,6 +102,7 @@ router.put('/users/:id', async (req, res) => {
       name,
       role: req.body.role === 'SUPERADMIN' ? 'SUPERADMIN' : 'USER',
       status: req.body.status === 'Inactive' ? 'Inactive' : 'Active',
+      reminderEmails: cleanEmails(req.body.reminderEmails),
     };
     if (req.body.password) {
       if (String(req.body.password).length < 10) {
@@ -125,6 +132,50 @@ router.put('/users/:id', async (req, res) => {
   } catch (error) {
     console.error('Update user failed:', error);
     res.status(400).json({ error: error.message || 'Failed to update user.' });
+  }
+});
+
+router.post('/users/:id/reminder-emails', async (req, res) => {
+  try {
+    const id = toRequiredInt(req.params.id, 'User');
+    const email = cleanEmails([req.body.email])[0];
+    if (!email) return res.status(400).json({ error: 'Valid email is required.' });
+
+    const user = await prisma.user.findFirst({ where: { id, deletedAt: null } });
+    if (!user) return res.status(404).json({ error: 'User not found.' });
+
+    const reminderEmails = cleanEmails([...(Array.isArray(user.reminderEmails) ? user.reminderEmails : []), email]);
+    const updated = await prisma.user.update({
+      where: { id },
+      data: { reminderEmails },
+      include: { companyAccess: { where: { deletedAt: null } } },
+    });
+    res.json(sanitizeUser(updated));
+  } catch (error) {
+    console.error('Add user reminder email failed:', error);
+    res.status(400).json({ error: error.message || 'Failed to add user reminder email.' });
+  }
+});
+
+router.delete('/users/:id/reminder-emails/:email', async (req, res) => {
+  try {
+    const id = toRequiredInt(req.params.id, 'User');
+    const email = cleanEmails([decodeURIComponent(req.params.email)])[0];
+    if (!email) return res.status(400).json({ error: 'Valid email is required.' });
+
+    const user = await prisma.user.findFirst({ where: { id, deletedAt: null } });
+    if (!user) return res.status(404).json({ error: 'User not found.' });
+
+    const reminderEmails = cleanEmails(user.reminderEmails).filter(item => item !== email);
+    const updated = await prisma.user.update({
+      where: { id },
+      data: { reminderEmails },
+      include: { companyAccess: { where: { deletedAt: null } } },
+    });
+    res.json(sanitizeUser(updated));
+  } catch (error) {
+    console.error('Remove user reminder email failed:', error);
+    res.status(400).json({ error: error.message || 'Failed to remove user reminder email.' });
   }
 });
 

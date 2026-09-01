@@ -6,6 +6,11 @@ const { toRequiredInt, text } = require('../lib/coerce');
 const router = express.Router();
 const prisma = new PrismaClient();
 
+function cleanEmails(value) {
+    const list = Array.isArray(value) ? value : String(value || '').split(',');
+    return [...new Set(list.map(item => String(item || '').trim().toLowerCase()).filter(item => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(item)))];
+}
+
 router.get('/all', async (req, res) => {
     try {
         const where = isSuperAdmin(req.user)
@@ -56,7 +61,8 @@ router.post('/', async (req, res) => {
             bankName: text(req.body.bankName, null),
             accountNumber: text(req.body.accountNumber, null),
             ifscCode: text(req.body.ifscCode, null),
-            signatoryRole: text(req.body.signatoryRole, 'Authorized Signatory') || 'Authorized Signatory'
+            signatoryRole: text(req.body.signatoryRole, 'Authorized Signatory') || 'Authorized Signatory',
+            reminderEmails: cleanEmails(req.body.reminderEmails)
         };
         if (!data.companyName) throw new Error('Company name is required.');
 
@@ -147,7 +153,8 @@ router.put('/profile/:id', async (req, res) => {
                 bankName: text(req.body.bankName, null),
                 accountNumber: text(req.body.accountNumber, null),
                 ifscCode: text(req.body.ifscCode, null),
-                signatoryRole: text(req.body.signatoryRole, existing.signatoryRole || 'Authorized Signatory') || 'Authorized Signatory'
+                signatoryRole: text(req.body.signatoryRole, existing.signatoryRole || 'Authorized Signatory') || 'Authorized Signatory',
+                reminderEmails: cleanEmails(req.body.reminderEmails)
             }
         });
         res.json(profile);
@@ -206,6 +213,38 @@ router.delete('/:tenantKey', async (req, res) => {
     } catch (error) {
         console.error('Company profile delete error:', error);
         res.status(400).json({ error: 'Failed to delete company.' });
+    }
+});
+
+router.post('/reminder-emails', async (req, res) => {
+    try {
+        const email = cleanEmails([req.body.email])[0];
+        if (!email) return res.status(400).json({ error: 'Valid email is required.' });
+        const profile = await prisma.myCompanyProfile.findFirst({ where: { tenantKey: req.tenantKey, deletedAt: null } });
+        if (!profile) return res.status(404).json({ error: 'Company profile not found.' });
+
+        const reminderEmails = cleanEmails([...(Array.isArray(profile.reminderEmails) ? profile.reminderEmails : []), email]);
+        const updated = await prisma.myCompanyProfile.update({ where: { id: profile.id }, data: { reminderEmails } });
+        res.json(updated);
+    } catch (error) {
+        console.error('Company reminder email add error:', error);
+        res.status(400).json({ error: 'Failed to add reminder email.' });
+    }
+});
+
+router.delete('/reminder-emails/:email', async (req, res) => {
+    try {
+        const email = cleanEmails([decodeURIComponent(req.params.email)])[0];
+        if (!email) return res.status(400).json({ error: 'Valid email is required.' });
+        const profile = await prisma.myCompanyProfile.findFirst({ where: { tenantKey: req.tenantKey, deletedAt: null } });
+        if (!profile) return res.status(404).json({ error: 'Company profile not found.' });
+
+        const reminderEmails = cleanEmails(profile.reminderEmails).filter(item => item !== email);
+        const updated = await prisma.myCompanyProfile.update({ where: { id: profile.id }, data: { reminderEmails } });
+        res.json(updated);
+    } catch (error) {
+        console.error('Company reminder email remove error:', error);
+        res.status(400).json({ error: 'Failed to remove reminder email.' });
     }
 });
 module.exports = router;

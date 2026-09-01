@@ -470,6 +470,7 @@ model MyCompanyProfile {
   accountNumber   String?
   ifscCode        String?
   signatoryRole   String? 
+  reminderEmails  Json?
 }
 
 
@@ -480,6 +481,7 @@ model User {
   passwordHash   String
   role           String              @default("USER")
   status         String              @default("Active")
+  reminderEmails Json?
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt
   deletedAt      DateTime?
