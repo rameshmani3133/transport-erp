@@ -194,11 +194,11 @@ export default function DriverSettlement() {
     const columns = [
         { header: 'No.', key: 'settlementNo', render: s => <strong>{s.settlementNo}</strong> },
         { header: 'Date', key: 'date', render: s => dateText(s.date) },
-        { header: 'Driver', key: 'driver', render: s => <strong>{s.driver?.name || '-'}</strong> },
-        { header: 'Trips Settled', key: 'trips', render: s => `${s.trips?.length || 0} Trips` },
-        { header: 'Total Salary', key: 'salary', render: s => money(s.driverSalary) },
-        { header: 'Total Advance', key: 'advance', render: s => money(s.advanceDeducted) },
-        { header: 'Net Payout', key: 'net', render: s => <strong style={{color: num(s.netPayable) >= 0 ? '#16a34a' : '#ea580c'}}>{money(s.netPayable)}</strong> },
+        { header: 'Driver', key: 'driver', sortValue: s => s.driver?.name || '', render: s => <strong>{s.driver?.name || '-'}</strong> },
+        { header: 'Trips Settled', key: 'trips', sortValue: s => s.trips?.length || 0, render: s => `${s.trips?.length || 0} Trips` },
+        { header: 'Total Salary', key: 'salary', sortValue: s => num(s.driverSalary), render: s => money(s.driverSalary) },
+        { header: 'Total Advance', key: 'advance', sortValue: s => num(s.advanceDeducted), render: s => money(s.advanceDeducted) },
+        { header: 'Net Payout', key: 'net', sortValue: s => num(s.netPayable), render: s => <strong style={{color: num(s.netPayable) >= 0 ? '#16a34a' : '#ea580c'}}>{money(s.netPayable)}</strong> },
         { header: 'Actions', key: 'actions', render: s => (
             <div style={{ display: 'flex', gap: '10px' }}>
                 <button type="button" onClick={() => handleEdit(s)} style={{color:'#3b82f6', background:'none', border:'none', cursor:'pointer', fontWeight:'bold'}}>Edit</button>

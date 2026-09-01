@@ -31,6 +31,20 @@ const Bar = ({ label, value, max, color }) => (
     </div>
 );
 
+function SortableReportTable({ rows, columns, title, tableTitle, exportExcel, printReport }) {
+    const [processedRows, setProcessedRows] = useState(rows);
+
+    return (
+        <>
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
+                <button onClick={() => exportExcel(processedRows, columns, title)} style={{ padding: '9px 14px', border: 0, borderRadius: '6px', background: '#0f766e', color: 'white', fontWeight: 800, cursor: 'pointer' }}>Export Excel</button>
+                <button onClick={() => printReport(processedRows, columns, title)} style={{ padding: '9px 14px', border: 0, borderRadius: '6px', background: '#2563eb', color: 'white', fontWeight: 800, cursor: 'pointer' }}>Print Report</button>
+            </div>
+            <DataTable data={rows} columns={columns} title={tableTitle || title.replace(/_/g, ' ')} enableColumnFilters onFilteredDataChange={setProcessedRows} />
+        </>
+    );
+}
+
 export default function Reports() {
     const [activeTab, setActiveTab] = useState('summary');
     const [filters, setFilters] = useState({ clientId: '', startDate: '', endDate: '', group: 'All' });
@@ -147,13 +161,6 @@ export default function Reports() {
         printWindow.document.write(`<html><head><title>${htmlEscape(title)}</title><style>@page{size:A4 landscape;margin:8mm}body{font-family:Arial,sans-serif;padding:12px;color:#111827}h2{margin:0 0 4px;font-size:18px}p{color:#64748b;font-size:11px;margin:0 0 12px}table{width:100%;border-collapse:collapse;font-size:10px;table-layout:auto}th,td{border:1px solid #cbd5e1;padding:5px;text-align:left;vertical-align:top;word-break:break-word}th{background:#f1f5f9;color:#334155}@media print{body{padding:0}}</style></head><body><h2>${htmlEscape(title.replace(/_/g, ' '))}</h2><p>Generated on ${new Date().toLocaleString()}</p><table><thead><tr>${columns.map(c => `<th>${htmlEscape(c.header)}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${columns.map(c => `<td>${htmlEscape(tableValue(row, c))}</td>`).join('')}</tr>`).join('')}</tbody></table><script>window.onload=()=>window.print()</script></body></html>`);
         printWindow.document.close();
     };
-    const ExportButtons = ({ rows, columns, title }) => (
-        <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
-            <button onClick={() => exportExcel(rows, columns, title)} style={{ padding: '9px 14px', border: 0, borderRadius: '6px', background: '#0f766e', color: 'white', fontWeight: 800, cursor: 'pointer' }}>Export Excel</button>
-            <button onClick={() => printReport(rows, columns, title)} style={{ padding: '9px 14px', border: 0, borderRadius: '6px', background: '#2563eb', color: 'white', fontWeight: 800, cursor: 'pointer' }}>Print Report</button>
-        </div>
-    );
-
     if (data.loading) return <div style={{ padding: '40px', fontWeight: 800 }}>Loading reports...</div>;
 
     const tripCols = [
@@ -216,11 +223,11 @@ export default function Reports() {
                 <button onClick={() => setFilters({ clientId: '', startDate: '', endDate: '', group: 'All' })} style={{ padding: '10px', border: '1px solid #cbd5e1', borderRadius: '6px', background: 'white', cursor: 'pointer', fontWeight: 800 }}>Clear</button>
             </div>
             {activeTab === 'summary' && <><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '14px', marginBottom: '18px' }}><StatCard label="Ledger Revenue" value={money(revenue)} tone="#2563eb" sub="Income ledger balance" /><StatCard label="Ledger Expenses" value={money(expenses)} tone="#dc2626" sub="Expense ledger balance" /><StatCard label="Gross Profit" value={money(grossProfit)} tone={grossProfit >= 0 ? '#0f766e' : '#dc2626'} sub={`Margin ${pct(margin)}`} /><StatCard label="Receivables" value={money(receivables)} tone="#b45309" sub="Open client ledger balance" /><StatCard label="Payables" value={money(payables)} tone="#7c3aed" sub="Vendor and pump creditors" /><StatCard label="Loan Outstanding" value={money(loanOutstanding)} tone="#9333ea" sub={`${dueLoans.length} loans not marked paid`} /><StatCard label="Monthly EMI" value={money(loanMonthlyEmi)} tone="#0f766e" sub="Active loan cash outflow" /><StatCard label="Diesel Control" value={money(dieselControl)} tone="#0f766e" sub="Client/vendor diesel subledgers" /><StatCard label="Output Tax" value={money(taxPayable)} tone="#475569" sub="Duties & Taxes" /></div><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '16px' }}><Section title="Collections Snapshot"><Bar label="Invoiced" value={invoiced} max={Math.max(invoiced, collected, 1)} color="#2563eb" /><Bar label="Collected incl. advances" value={collected} max={Math.max(invoiced, collected, 1)} color="#0f766e" /><Bar label="Unbilled trips" value={unbilled} max={Math.max(invoiced, unbilled, 1)} color="#b45309" /></Section><Section title="Loan Snapshot"><Bar label="Principal" value={loanPrincipal} max={Math.max(loanPrincipal, loanOutstanding, 1)} color="#7c3aed" /><Bar label="Outstanding" value={loanOutstanding} max={Math.max(loanPrincipal, loanOutstanding, 1)} color="#b45309" /><Bar label="Monthly EMI" value={loanMonthlyEmi} max={Math.max(loanPrincipal, loanMonthlyEmi, 1)} color="#0f766e" /></Section><Section title="Receivable Aging">{Object.entries(aging).map(([label, value]) => <Bar key={label} label={label} value={value} max={agingMax} color={label === '90+' ? '#dc2626' : '#0f766e'} />)}</Section><Section title="Top Client Outstanding">{clientRows.slice(0, 5).map(c => <Bar key={c.id} label={c.name} value={c.outstanding} max={Math.max(clientRows[0]?.outstanding || 1, 1)} color="#7c3aed" />)}</Section></div></>}
-            {activeTab === 'trips' && <><ExportButtons rows={tripRows} columns={tripCols} title="Trip_Margin_Report" /><DataTable data={tripRows} columns={tripCols} title="Trip Profitability" enableColumnFilters /></>}
-            {activeTab === 'invoices' && <><ExportButtons rows={filteredInvoices} columns={invoiceCols} title="Invoice_Collections_Report" /><DataTable data={filteredInvoices} columns={invoiceCols} title="Invoice Collections" enableColumnFilters /></>}
-            {activeTab === 'clients' && <><ExportButtons rows={clientRows} columns={clientCols} title="Client_Performance_Report" /><DataTable data={clientRows} columns={clientCols} title="Client Performance" enableColumnFilters /></>}
-            {activeTab === 'loans' && <><ExportButtons rows={filteredLoans} columns={loanCols} title="Loan_Tracking_Report" /><DataTable data={filteredLoans} columns={loanCols} title="Loan Tracking" enableColumnFilters /></>}
-            {activeTab === 'accounts' && <><div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}><select value={filters.group} onChange={e => setFilters({ ...filters, group: e.target.value })}><option value="All">All groups</option><option value="Sundry Debtors">Sundry Debtors</option><option value="Sundry Creditors">Sundry Creditors</option><option value="Cash/Bank">Cash/Bank</option><option value="Direct Income">Income</option><option value="Expense">Expense</option><option value="Duties & Taxes">Duties & Taxes</option><option value="Client Diesel">Client Diesel</option><option value="Vendor Diesel">Vendor Diesel</option></select></div><ExportButtons rows={filteredAccounts} columns={accountCols} title="Ledger_Audit_Report" /><DataTable data={filteredAccounts} columns={accountCols} title="Ledger Account Audit" enableColumnFilters /></>}
+            {activeTab === 'trips' && <SortableReportTable rows={tripRows} columns={tripCols} title="Trip_Margin_Report" tableTitle="Trip Profitability" exportExcel={exportExcel} printReport={printReport} />}
+            {activeTab === 'invoices' && <SortableReportTable rows={filteredInvoices} columns={invoiceCols} title="Invoice_Collections_Report" tableTitle="Invoice Collections" exportExcel={exportExcel} printReport={printReport} />}
+            {activeTab === 'clients' && <SortableReportTable rows={clientRows} columns={clientCols} title="Client_Performance_Report" tableTitle="Client Performance" exportExcel={exportExcel} printReport={printReport} />}
+            {activeTab === 'loans' && <SortableReportTable rows={filteredLoans} columns={loanCols} title="Loan_Tracking_Report" tableTitle="Loan Tracking" exportExcel={exportExcel} printReport={printReport} />}
+            {activeTab === 'accounts' && <><div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}><select value={filters.group} onChange={e => setFilters({ ...filters, group: e.target.value })}><option value="All">All groups</option><option value="Sundry Debtors">Sundry Debtors</option><option value="Sundry Creditors">Sundry Creditors</option><option value="Cash/Bank">Cash/Bank</option><option value="Direct Income">Income</option><option value="Expense">Expense</option><option value="Duties & Taxes">Duties & Taxes</option><option value="Client Diesel">Client Diesel</option><option value="Vendor Diesel">Vendor Diesel</option></select></div><SortableReportTable rows={filteredAccounts} columns={accountCols} title="Ledger_Audit_Report" tableTitle="Ledger Account Audit" exportExcel={exportExcel} printReport={printReport} /></>}
         </div>
     );
 }

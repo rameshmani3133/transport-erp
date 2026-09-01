@@ -93,11 +93,11 @@ export default function DieselManagement() {
 
     const columns = [
         { header: 'Date', key: 'date', render: (d) => dateText(d.date) },
-        { header: 'Vehicle', key: 'vehicle', render: (d) => <strong>{d.vehicle?.regNo}</strong> },
-        { header: 'Pump / Creditor', key: 'pump', render: (d) => d.pumpAccount?.accountName || <span style={{color:'red'}}>Unlinked</span> },
+        { header: 'Vehicle', key: 'vehicle', sortValue: d => d.vehicle?.regNo || '', render: (d) => <strong>{d.vehicle?.regNo}</strong> },
+        { header: 'Pump / Creditor', key: 'pump', sortValue: d => d.pumpAccount?.accountName || '', render: (d) => d.pumpAccount?.accountName || <span style={{color:'red'}}>Unlinked</span> },
         { header: 'Slip No', key: 'slipNumber', render: (d) => d.slipNumber || '-' },
-        { header: 'Liters', key: 'liters', render: (d) => `${num(d.quantityLiters).toFixed(2)} L` },
-        { header: 'Amount', key: 'total', render: (d) => <strong style={{color:'#ea580c'}}>{money(d.totalAmount)}</strong> },
+        { header: 'Liters', key: 'liters', sortValue: d => num(d.quantityLiters), render: (d) => `${num(d.quantityLiters).toFixed(2)} L` },
+        { header: 'Amount', key: 'total', sortValue: d => num(d.totalAmount), render: (d) => <strong style={{color:'#ea580c'}}>{money(d.totalAmount)}</strong> },
         { header: 'Actions', key: 'actions', render: (d) => (
             <div style={{display:'flex', gap:'10px'}}>
                 <button onClick={() => handleEdit(d)} style={{color:'#3b82f6', background:'none', border:'none', cursor:'pointer', fontWeight:'bold'}}>Edit</button>

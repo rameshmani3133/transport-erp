@@ -60,7 +60,7 @@ export default function RouteMaster() {
 
   const columns = [
       { header: 'Client', key: 'company.companyName', render: (r) => r.company?.companyName },
-      { header: 'Route', key: 'route', render: (r) => <strong>{r.fromLocation} to {r.toLocation}</strong> },
+      { header: 'Route', key: 'route', sortValue: r => `${r.fromLocation || ''} ${r.toLocation || ''}`, render: (r) => <strong>{r.fromLocation} to {r.toLocation}</strong> },
       { header: 'RTKM', key: 'rtkm', render: (r) => `${r.rtkm} KM` },
       { header: 'Default Rate', key: 'defaultRate', render: (r) => `Rs.${r.defaultRate} (${r.calcType})` },
       { header: 'Actions', key: 'actions', render: (r) => (

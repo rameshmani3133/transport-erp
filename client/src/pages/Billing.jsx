@@ -592,7 +592,7 @@ export default function Billing() {
     { header: 'SAC Code', key: 'sacCode', render: (inv) => inv.sacCode || '-' },
     { header: 'Vendor Code', key: 'vendorCode', render: (inv) => inv.vendorCode || inv.location?.company?.vendorCode || '-' },
     { header: 'PO / MIGO', key: 'poMigo', render: (inv) => inv.poMigo || '-' },
-    { header: 'Trips', key: 'trips', render: (inv) => inv.trips?.length || 0 },
+    { header: 'Trips', key: 'trips', sortValue: inv => inv.trips?.length || 0, render: (inv) => inv.trips?.length || 0 },
     { header: 'Total Amount', key: 'grandTotal', render: (inv) => <strong style={{ color: '#16a34a' }}>{money(inv.grandTotal)}</strong> },
     { header: 'Balance', key: 'balanceAmount', render: (inv) => <strong style={{ color: num(inv.balanceAmount) > 0 ? '#b45309' : '#16a34a' }}>{money(inv.balanceAmount)}</strong> },
     { header: 'Status', key: 'status', render: (inv) => <span style={{ padding: '4px 8px', borderRadius: '4px', backgroundColor: inv.status === 'Paid' ? '#dcfce7' : '#fee2e2', color: inv.status === 'Paid' ? '#16a34a' : '#ef4444', fontSize: '12px', fontWeight: 'bold' }}>{inv.status}</span> },

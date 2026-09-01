@@ -224,8 +224,8 @@ export default function TripManagement() {
   const columns = [
       { header: 'TRIP NO', key: 'tripNo', render: (t) => <strong>{t.tripNo}</strong> },
       { header: 'DATE', key: 'date', render: (t) => dateText(t.date) },
-      { header: 'ROUTE', key: 'route', render: (t) => `${t.route?.fromLocation || '-'} to ${t.route?.toLocation || '-'}` },
-      { header: 'VEHICLE', key: 'vehicle', render: (t) => t.vehicle?.regNo || '-' },
+      { header: 'ROUTE', key: 'route', sortValue: t => `${t.route?.fromLocation || ''} ${t.route?.toLocation || ''}`, render: (t) => `${t.route?.fromLocation || '-'} to ${t.route?.toLocation || '-'}` },
+      { header: 'VEHICLE', key: 'vehicle', sortValue: t => t.vehicle?.regNo || '', render: (t) => t.vehicle?.regNo || '-' },
       { header: 'CLIENT BILL', key: 'totalClientBill', render: (t) => <strong style={{color:'#16a34a'}}>{money(t.totalClientBill)}</strong> },
       { header: 'CLIENT ADV', key: 'clientAdvanceAmount', render: (t) => num(t.clientAdvanceAmount) > 0 ? <strong style={{color:'#2563eb'}}>{money(t.clientAdvanceAmount)}</strong> : '-' },
       { header: 'DRV/VEN ADV', key: 'advancePaid', render: (t) => num(t.advancePaid) > 0 ? <strong style={{color:'#dc2626'}}>{money(t.advancePaid)}</strong> : '-' },

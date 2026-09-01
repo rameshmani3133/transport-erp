@@ -135,7 +135,7 @@ export default function VendorSettlement() {
     const columns = [
         { header: 'Settlement No', key: 'settlementNo', render: s => <strong>{s.settlementNo}</strong> },
         { header: 'Date', key: 'date', render: s => dateText(s.date) },
-        { header: 'Vendor / Owner', key: 'vendor', render: s => s.vendor?.accountName || '-' },
+        { header: 'Vendor / Owner', key: 'vendor', sortValue: s => s.vendor?.accountName || '', render: s => s.vendor?.accountName || '-' },
         { header: 'Gross Amount', key: 'grossAmount', render: s => money(s.grossAmount) },
         { header: 'Net Payable', key: 'netPayable', render: s => <span style={{color:'#16a34a', fontWeight:'bold'}}>{money(s.netPayable)}</span> },
         { header: 'Status', key: 'status', render: s => <span style={{backgroundColor:'#dcfce7', color:'#16a34a', padding:'4px 8px', borderRadius:'4px', fontSize:'12px', fontWeight:'bold'}}>{s.status}</span> },

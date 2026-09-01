@@ -24,6 +24,17 @@ export default function DataTable({ data, columns, title = "Records", enableColu
         if (col.exportValue) return col.exportValue(row);
         return getNestedValue(row, col.key);
     };
+    const getSortValue = (row, col) => {
+        if (col?.sortValue) return col.sortValue(row);
+        const rawValue = col ? getNestedValue(row, col.key) : undefined;
+        return rawValue ?? (col ? getCellValue(row, col) : '');
+    };
+    const compareValues = (left, right) => {
+        const leftNumber = typeof left === 'number' ? left : Number(left);
+        const rightNumber = typeof right === 'number' ? right : Number(right);
+        if (Number.isFinite(leftNumber) && Number.isFinite(rightNumber)) return leftNumber - rightNumber;
+        return String(left).localeCompare(String(right), undefined, { numeric: true, sensitivity: 'base' });
+    };
 
     // Filter and Sort Engine
     const processedData = useMemo(() => {
@@ -56,19 +67,19 @@ export default function DataTable({ data, columns, title = "Records", enableColu
         // 3. Column Sort
         if (sortConfig.key) {
             const sortColumn = columns.find(col => col.key === sortConfig.key);
-            filtered.sort((a, b) => {
-                const aVal = sortColumn ? getCellValue(a, sortColumn) || '' : getNestedValue(a, sortConfig.key) || '';
-                const bVal = sortColumn ? getCellValue(b, sortColumn) || '' : getNestedValue(b, sortConfig.key) || '';
-                
-                // Handle numbers vs strings
-                if (!isNaN(aVal) && !isNaN(bVal)) {
-                    return sortConfig.direction === 'asc' ? aVal - bVal : bVal - aVal;
-                }
-                
-                if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
-                if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
-                return 0;
-            });
+            filtered = filtered
+                .map((row, index) => ({ row, index }))
+                .sort((left, right) => {
+                    const leftValue = getSortValue(left.row, sortColumn);
+                    const rightValue = getSortValue(right.row, sortColumn);
+                    const leftEmpty = leftValue == null || leftValue === '';
+                    const rightEmpty = rightValue == null || rightValue === '';
+                    if (leftEmpty !== rightEmpty) return leftEmpty ? 1 : -1;
+                    const result = compareValues(leftValue, rightValue);
+                    if (result === 0) return left.index - right.index;
+                    return sortConfig.direction === 'asc' ? result : -result;
+                })
+                .map(item => item.row);
         }
         return filtered;
     }, [data, search, columnFilters, sortConfig, columns, enableColumnFilters]);
@@ -94,6 +105,7 @@ export default function DataTable({ data, columns, title = "Records", enableColu
         let direction = 'asc';
         if (sortConfig.key === key && sortConfig.direction === 'asc') direction = 'desc';
         setSortConfig({ key, direction });
+        setCurrentPage(1);
     };
 
     // Pagination Logic
