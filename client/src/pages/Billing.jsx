@@ -675,10 +675,21 @@ export default function Billing() {
               </select>
             </Field>
             <Field label="Product / Service">
-              <select value={formData.productService} onChange={e => setFormData({ ...formData, productService: e.target.value })} style={fieldStyle}>
-                <option value="Transport Charges">Transport Charges</option>
-                <option value="Freight Charges">Freight Charges</option>
-              </select>
+              {isLpg ? (
+                <input
+                  type="text"
+                  value={formData.productService}
+                  onChange={e => setFormData({ ...formData, productService: e.target.value })}
+                  placeholder="Enter LPG invoice description"
+                  required
+                  style={fieldStyle}
+                />
+              ) : (
+                <select value={formData.productService} onChange={e => setFormData({ ...formData, productService: e.target.value })} style={fieldStyle}>
+                  <option value="Transport Charges">Transport Charges</option>
+                  <option value="Freight Charges">Freight Charges</option>
+                </select>
+              )}
             </Field>
           </>}
           <Field label="Client Ledger - Dr">

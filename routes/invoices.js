@@ -160,6 +160,7 @@ router.post('/', async (req, res) => {
             if (!isManualTaxInvoice && !selectedTrips.length) throw new Error('Please select at least one trip to bill.');
             if (isManualTaxInvoice && !text(d.invoiceNo)) throw new Error('Invoice number is required.');
             if (isManualTaxInvoice && toNumber(d.taxableAmount) <= 0) throw new Error('Taxable amount must be greater than zero.');
+            if (location.invoiceFormat === 'LPG Bill' && !text(d.productService)) throw new Error('LPG invoice description is required.');
             if (selectedTrips.some(trip => trip.companyId !== location.companyId)) throw new Error('All selected trips must belong to the selected billing location client.');
             const invoiceNo = await resolveInvoiceNo(tx, req, d, location.companyId);
 
@@ -229,6 +230,7 @@ router.put('/:id', async (req, res) => {
             if (!isManualTaxInvoice && !tripIds.length) throw new Error('Please select at least one trip to bill.');
             if (isManualTaxInvoice && !text(d.invoiceNo)) throw new Error('Invoice number is required.');
             if (isManualTaxInvoice && toNumber(d.taxableAmount) <= 0) throw new Error('Taxable amount must be greater than zero.');
+            if (location.invoiceFormat === 'LPG Bill' && !text(d.productService)) throw new Error('LPG invoice description is required.');
 
             const selectedTrips = tripIds.length ? await tx.trip.findMany({
                 where: withTenant(req, {
