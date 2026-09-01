@@ -63,6 +63,7 @@ const initialInvoice = {
   periodTo: '',
   transportationMode: 'By Road',
   vehicleNo: '',
+  vehicleNos: [],
   productService: 'Transport Charges',
   declaration: 'I/we have taken registration under the CGST Act, 2017 and have exercised the option to pay tax on services of GTA in relation to transport of goods supplied by us under forward charge.',
   showStatus: false,
@@ -222,6 +223,7 @@ export default function Billing() {
       periodTo: inputDate(invoice.periodTo),
       transportationMode: invoice.transportationMode || 'By Road',
       vehicleNo: invoice.vehicleNo || '',
+      vehicleNos: String(invoice.vehicleNo || '').split(',').map(value => value.trim()).filter(Boolean),
       productService: invoice.productService || 'Transport Charges',
       declaration: invoice.declaration || initialInvoice.declaration,
       showStatus: Boolean(invoice.showStatus),
@@ -254,6 +256,7 @@ export default function Billing() {
     if (!isManualTaxInvoice && !selectedTripIds.length) return alert('Please select at least one trip to bill.');
     if (isManualTaxInvoice && !formData.invoiceNo.trim()) return alert('Invoice number is required.');
     if (isManualTaxInvoice && num(formData.taxableAmount) <= 0) return alert('Enter a taxable amount greater than zero.');
+    if (isLpg && !formData.vehicleNos.length) return alert('Select at least one vehicle for the LPG invoice.');
 
     try {
       const response = await fetch(editId ? `/api/invoices/${editId}` : '/api/invoices', {
@@ -321,6 +324,8 @@ export default function Billing() {
       const supplierStateCode = String(profile.gstNumber || '').slice(0, 2) || '-';
       const receiverStateCode = String(invoice.location?.gstNumber || '').slice(0, 2) || '-';
       const formatTitle = invoice.invoiceFormat === 'LPG Bill' ? 'LPG Invoice' : 'IOCL Invoice';
+      const vehicleNumbers = String(invoice.vehicleNo || '').split(',').map(value => value.trim()).filter(Boolean);
+      const vehicleNumberHtml = vehicleNumbers.length ? vehicleNumbers.map(value => escapeHtml(value)).join('<br>') : '-';
       printWindow.document.write(`
         <html><head><title>${escapeHtml(invoice.invoiceNo)} - ${formatTitle}</title><style>
           @page { size:A4 portrait; margin:10mm } *{box-sizing:border-box} body{font-family:Arial,sans-serif;color:#111;margin:0;font-size:12px}
@@ -332,7 +337,7 @@ export default function Billing() {
           <div class="head"><h1>${escapeHtml(supplierName)}</h1><div class="addr">${escapeHtml(supplierAddress || '-')}<br>GSTIN: ${escapeHtml(profile.gstNumber || '-')}</div></div>
           <div class="box"><div class="title">TAX INVOICE</div>
             <div class="grid"><div class="cell"><strong>Invoice No:</strong> ${escapeHtml(invoice.invoiceNo)}<br><strong>Invoice Date:</strong> ${escapeHtml(formatDate(invoice.date))}<br><strong>State Code:</strong> ${escapeHtml(supplierStateCode)}<br><strong>GST:</strong> ${escapeHtml(profile.gstNumber || '-')}</div>
-            <div class="cell"><strong>Transportation Mode:</strong> ${escapeHtml(invoice.transportationMode || 'By Road')}<br><strong>Vehicle No:</strong> ${escapeHtml(invoice.vehicleNo || '-')}<br><strong>Vendor Code:</strong> ${escapeHtml(invoice.vendorCode || invoice.location?.company?.vendorCode || '-')}<br><strong>Period:</strong> ${escapeHtml(formatDate(invoice.periodFrom))} to ${escapeHtml(formatDate(invoice.periodTo))}</div></div>
+            <div class="cell"><strong>Transportation Mode:</strong> ${escapeHtml(invoice.transportationMode || 'By Road')}<br><strong>Vehicle No:</strong><div style="padding-left:12px">${vehicleNumberHtml}</div><strong>Vendor Code:</strong> ${escapeHtml(invoice.vendorCode || invoice.location?.company?.vendorCode || '-')}<br><strong>Period:</strong> ${escapeHtml(formatDate(invoice.periodFrom))} to ${escapeHtml(formatDate(invoice.periodTo))}</div></div>
             <div class="receiver"><h3>Details of Receiver / Billed to</h3><strong>Name:</strong> ${escapeHtml(clientName)}<br><strong>Address:</strong> ${escapeHtml(clientAddress || '-')}<br><strong>GSTIN:</strong> ${escapeHtml(invoice.location?.gstNumber || '-')}<br><strong>State Code:</strong> ${escapeHtml(receiverStateCode)}</div>
             <table class="items"><thead><tr><th style="width:12%">Slr No</th><th>Name of Product / Service</th><th style="width:18%">SAC</th><th style="width:24%">Total Amount (Rs.)</th></tr></thead><tbody>
               <tr><td class="center">1</td><td>${escapeHtml(invoice.productService || 'Transport Charges')}</td><td class="center">${escapeHtml(invoice.sacCode || '-')}</td><td class="right">${num(invoice.subTotal).toFixed(2)}</td></tr>
@@ -669,10 +674,31 @@ export default function Billing() {
               </select>
             </Field>
             <Field label="Vehicle Number">
-              <select value={formData.vehicleNo} onChange={e => setFormData({ ...formData, vehicleNo: e.target.value })} required style={fieldStyle}>
-                <option value="">-- Select Vehicle --</option>
-                {vehicles.map(vehicle => <option key={vehicle.id} value={vehicle.regNo}>{vehicle.regNo}</option>)}
-              </select>
+              {isLpg ? (
+                <div style={{ ...fieldStyle, maxHeight: '170px', overflowY: 'auto', backgroundColor: '#fff' }}>
+                  {vehicles.length === 0 ? <span style={{ color: '#64748b' }}>No vehicles available.</span> : vehicles.map(vehicle => (
+                    <label key={vehicle.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '5px 2px', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={formData.vehicleNos.includes(vehicle.regNo)}
+                        onChange={event => setFormData(previous => ({
+                          ...previous,
+                          vehicleNos: event.target.checked
+                            ? [...previous.vehicleNos, vehicle.regNo]
+                            : previous.vehicleNos.filter(regNo => regNo !== vehicle.regNo)
+                        }))}
+                      />
+                      <span>{vehicle.regNo}</span>
+                    </label>
+                  ))}
+                </div>
+              ) : (
+                <select value={formData.vehicleNo} onChange={e => setFormData({ ...formData, vehicleNo: e.target.value })} required style={fieldStyle}>
+                  <option value="">-- Select Vehicle --</option>
+                  {vehicles.map(vehicle => <option key={vehicle.id} value={vehicle.regNo}>{vehicle.regNo}</option>)}
+                </select>
+              )}
+              {isLpg && <span style={{ fontSize: '11px', color: '#475569' }}>Selected: {formData.vehicleNos.length}</span>}
             </Field>
             <Field label="Product / Service">
               {isLpg ? (

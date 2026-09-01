@@ -122,12 +122,26 @@ function invoiceFormatData(d, location) {
         periodFrom: toDate(d.periodFrom),
         periodTo: toDate(d.periodTo),
         transportationMode: text(d.transportationMode, null) || null,
-        vehicleNo: text(d.vehicleNo, null) || null,
+        vehicleNo: location.invoiceFormat === 'LPG Bill'
+            ? [...new Set((Array.isArray(d.vehicleNos) ? d.vehicleNos : []).map(value => text(value, null)).filter(Boolean))].join(', ') || null
+            : text(d.vehicleNo, null) || null,
         productService: text(d.productService, null) || null,
         gstType: text(d.gstType, null) || null,
         gstPercent: Math.max(toNumber(d.gstPercent), 0),
         declaration: text(d.declaration, null) || null
     };
+}
+
+async function validateInvoiceVehicles(tx, req, d, location) {
+    const requested = location.invoiceFormat === 'LPG Bill'
+        ? [...new Set((Array.isArray(d.vehicleNos) ? d.vehicleNos : []).map(value => text(value, null)).filter(Boolean))]
+        : [text(d.vehicleNo, null)].filter(Boolean);
+    if (['IOCL INVOICE', 'LPG Bill'].includes(location.invoiceFormat) && !requested.length) {
+        throw new Error(location.invoiceFormat === 'LPG Bill' ? 'Select at least one vehicle.' : 'Vehicle number is required.');
+    }
+    if (!requested.length) return;
+    const count = await tx.vehicle.count({ where: withTenant(req, { regNo: { in: requested } }) });
+    if (count !== requested.length) throw new Error('One or more selected vehicles are unavailable for this company.');
 }
 
 router.get('/', async (req, res) => {
@@ -156,6 +170,7 @@ router.post('/', async (req, res) => {
             const location = await tx.billingLocation.findFirst({ where: withTenant(req, { id: locationId }) });
             if (!location) throw new Error('Billing location not found.');
             const isManualTaxInvoice = ['IOCL INVOICE', 'LPG Bill'].includes(location.invoiceFormat);
+            await validateInvoiceVehicles(tx, req, d, location);
             if (selectedTrips.length !== tripIds.length) throw new Error('One or more selected trips are no longer available for billing.');
             if (!isManualTaxInvoice && !selectedTrips.length) throw new Error('Please select at least one trip to bill.');
             if (isManualTaxInvoice && !text(d.invoiceNo)) throw new Error('Invoice number is required.');
@@ -227,6 +242,7 @@ router.put('/:id', async (req, res) => {
             const location = await tx.billingLocation.findFirst({ where: withTenant(req, { id: locationId }) });
             if (!location) throw new Error('Billing location not found.');
             const isManualTaxInvoice = ['IOCL INVOICE', 'LPG Bill'].includes(location.invoiceFormat);
+            await validateInvoiceVehicles(tx, req, d, location);
             if (!isManualTaxInvoice && !tripIds.length) throw new Error('Please select at least one trip to bill.');
             if (isManualTaxInvoice && !text(d.invoiceNo)) throw new Error('Invoice number is required.');
             if (isManualTaxInvoice && toNumber(d.taxableAmount) <= 0) throw new Error('Taxable amount must be greater than zero.');
