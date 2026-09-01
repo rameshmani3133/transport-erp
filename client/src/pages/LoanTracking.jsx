@@ -18,7 +18,6 @@ const initialLoan = {
   principalAmount: '',
   outstandingAmount: '',
   emiAmount: '',
-  dueDay: '',
   nextDueDate: today(),
   startDate: '',
   endDate: '',
@@ -62,7 +61,6 @@ export default function LoanTracking() {
       principalAmount: loan.principalAmount || '',
       outstandingAmount: loan.outstandingAmount || '',
       emiAmount: loan.emiAmount || '',
-      dueDay: loan.dueDay || '',
       nextDueDate: loan.nextDueDate ? new Date(loan.nextDueDate).toISOString().split('T')[0] : today(),
       startDate: loan.startDate ? new Date(loan.startDate).toISOString().split('T')[0] : '',
       endDate: loan.endDate ? new Date(loan.endDate).toISOString().split('T')[0] : '',
@@ -100,7 +98,7 @@ export default function LoanTracking() {
     { header: 'Loan Amount', key: 'principalAmount', render: loan => money(loan.principalAmount), exportValue: loan => loan.principalAmount },
     { header: 'Outstanding', key: 'outstandingAmount', render: loan => <strong>{money(loan.outstandingAmount)}</strong>, exportValue: loan => loan.outstandingAmount },
     { header: 'EMI', key: 'emiAmount', render: loan => money(loan.emiAmount), exportValue: loan => loan.emiAmount },
-    { header: 'Next Due', key: 'nextDueDate', render: loan => dateText(loan.nextDueDate), exportValue: loan => dateText(loan.nextDueDate) },
+    { header: 'Monthly Due Date', key: 'nextDueDate', render: loan => dateText(loan.nextDueDate), exportValue: loan => dateText(loan.nextDueDate) },
     { header: 'Status', key: 'status', render: loan => loan.status },
     { header: 'Actions', key: 'actions', render: loan => (
       <div style={{ display: 'flex', gap: '10px' }}>
@@ -132,8 +130,7 @@ export default function LoanTracking() {
           <Field label="Loan Amount"><input type="number" step="any" value={formData.principalAmount} onChange={e => setField('principalAmount', e.target.value)} required style={fieldStyle} /></Field>
           <Field label="Outstanding Amount"><input type="number" step="any" value={formData.outstandingAmount} onChange={e => setField('outstandingAmount', e.target.value)} required style={fieldStyle} /></Field>
           <Field label="EMI / Due Amount"><input type="number" step="any" value={formData.emiAmount} onChange={e => setField('emiAmount', e.target.value)} required style={fieldStyle} /></Field>
-          <Field label="Due Day"><input type="number" min="1" max="31" value={formData.dueDay} onChange={e => setField('dueDay', e.target.value)} style={fieldStyle} /></Field>
-          <Field label="Next Due Date"><input type="date" value={formData.nextDueDate} onChange={e => setField('nextDueDate', e.target.value)} required style={fieldStyle} /></Field>
+          <Field label="Monthly Due Date"><input type="date" value={formData.nextDueDate} onChange={e => setField('nextDueDate', e.target.value)} required style={fieldStyle} /></Field>
           <Field label="Start Date"><input type="date" value={formData.startDate} onChange={e => setField('startDate', e.target.value)} style={fieldStyle} /></Field>
           <Field label="End Date"><input type="date" value={formData.endDate} onChange={e => setField('endDate', e.target.value)} style={fieldStyle} /></Field>
           <Field label="Status">

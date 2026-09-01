@@ -3,6 +3,12 @@ import DataTable from '../components/DataTable';
 
 const money = (value) => value == null ? '-' : `Rs.${Number(value || 0).toFixed(2)}`;
 const dateText = (value) => value ? new Date(value).toLocaleDateString() : '-';
+const triggerDays = [30, 15, 7, 3, 2, 1];
+
+function normalizeEmails(value) {
+  const list = Array.isArray(value) ? value : String(value || '').split(',');
+  return [...new Set(list.map(item => String(item || '').trim().toLowerCase()).filter(item => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(item)))];
+}
 
 function tone(status) {
   if (status === 'Overdue') return ['#fee2e2', '#dc2626'];
@@ -25,14 +31,23 @@ export default function Reminders() {
   const [category, setCategory] = useState('All');
   const [status, setStatus] = useState('Actionable');
   const [loading, setLoading] = useState(true);
-  const [emailTo, setEmailTo] = useState('');
-  const [daysAhead, setDaysAhead] = useState(30);
+  const [companyEmails, setCompanyEmails] = useState([]);
+  const [emailModalOpen, setEmailModalOpen] = useState(false);
+  const [newReminderEmail, setNewReminderEmail] = useState('');
   const [sending, setSending] = useState(false);
+  const [savingEmail, setSavingEmail] = useState(false);
 
   const loadReminders = async () => {
     setLoading(true);
-    const res = await fetch('/api/reminders');
-    setItems(res.ok ? await res.json() : []);
+    const [reminderRes, profileRes] = await Promise.all([
+      fetch('/api/reminders'),
+      fetch('/api/my-company')
+    ]);
+    setItems(reminderRes.ok ? await reminderRes.json() : []);
+    if (profileRes.ok) {
+      const profile = await profileRes.json();
+      setCompanyEmails(normalizeEmails(profile.reminderEmails));
+    }
     setLoading(false);
   };
 
@@ -44,13 +59,44 @@ export default function Reminders() {
       const res = await fetch('/api/reminders/email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ recipients: emailTo, daysAhead })
+        body: JSON.stringify({ daysAhead: 30 })
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) return alert(data.error || 'Failed to send reminder email.');
       alert(`${data.message} ${data.items} reminder item(s) included.`);
     } finally {
       setSending(false);
+    }
+  };
+
+  const addReminderEmail = async () => {
+    const email = normalizeEmails([newReminderEmail])[0];
+    if (!email) return alert('Enter a valid reminder email.');
+    setSavingEmail(true);
+    try {
+      const res = await fetch('/api/my-company/reminder-emails', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return alert(data.error || 'Failed to add reminder email.');
+      setCompanyEmails(normalizeEmails(data.reminderEmails));
+      setNewReminderEmail('');
+    } finally {
+      setSavingEmail(false);
+    }
+  };
+
+  const removeReminderEmail = async (email) => {
+    setSavingEmail(true);
+    try {
+      const res = await fetch(`/api/my-company/reminder-emails/${encodeURIComponent(email)}`, { method: 'DELETE' });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return alert(data.error || 'Failed to remove reminder email.');
+      setCompanyEmails(normalizeEmails(data.reminderEmails));
+    } finally {
+      setSavingEmail(false);
     }
   };
 
@@ -90,7 +136,10 @@ export default function Reminders() {
           <h2 style={{ margin: 0, color: '#0f172a' }}>Reminders</h2>
           <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '13px' }}>Driver, truck compliance, and loan due reminders.</p>
         </div>
-        <button onClick={loadReminders} style={{ padding: '9px 14px', border: 0, borderRadius: '6px', background: '#2563eb', color: 'white', cursor: 'pointer', fontWeight: 800 }}>Refresh</button>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          <button onClick={() => setEmailModalOpen(true)} style={{ padding: '9px 14px', border: '1px solid #cbd5e1', borderRadius: '6px', background: 'white', color: '#0f172a', cursor: 'pointer', fontWeight: 800 }}>Manage Mail IDs</button>
+          <button onClick={loadReminders} style={{ padding: '9px 14px', border: 0, borderRadius: '6px', background: '#2563eb', color: 'white', cursor: 'pointer', fontWeight: 800 }}>Refresh</button>
+        </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '18px' }}>
@@ -98,6 +147,7 @@ export default function Reminders() {
         <Stat label="Due This Week" value={counts['Due This Week'] || 0} color="#ea580c" />
         <Stat label="Due Soon" value={counts['Due Soon'] || 0} color="#b45309" />
         <Stat label="Upcoming" value={counts.Upcoming || 0} color="#15803d" />
+        <Stat label="Auto Mail IDs" value={companyEmails.length} color="#0f766e" />
       </div>
 
       <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '14px', background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '14px' }}>
@@ -115,21 +165,6 @@ export default function Reminders() {
           <option value="Due Soon">Due Soon</option>
           <option value="Upcoming">Upcoming</option>
         </select>
-        <input
-          type="text"
-          placeholder="Send to email, comma separated"
-          value={emailTo}
-          onChange={e => setEmailTo(e.target.value)}
-          style={{ padding: '9px', border: '1px solid #cbd5e1', borderRadius: '6px', minWidth: '230px' }}
-        />
-        <input
-          type="number"
-          min="0"
-          value={daysAhead}
-          onChange={e => setDaysAhead(e.target.value)}
-          style={{ padding: '9px', border: '1px solid #cbd5e1', borderRadius: '6px', width: '110px' }}
-          title="Days ahead"
-        />
         <button
           type="button"
           onClick={sendEmail}
@@ -138,9 +173,46 @@ export default function Reminders() {
         >
           {sending ? 'Sending...' : 'Send Email'}
         </button>
+        <span style={{ alignSelf: 'center', color: '#64748b', fontSize: '13px', fontWeight: 700 }}>Auto: {triggerDays.join(', ')} days before due</span>
       </div>
 
       <DataTable data={filtered} columns={columns} title="Reminder Register" enableColumnFilters />
+
+      {emailModalOpen && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: '20px' }}>
+          <div style={{ width: 'min(560px, 100%)', background: 'white', borderRadius: '8px', boxShadow: '0 24px 60px rgba(15,23,42,0.28)', padding: '20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ margin: 0, color: '#0f172a' }}>Reminder Mail IDs</h3>
+              <button type="button" onClick={() => setEmailModalOpen(false)} style={{ border: 0, background: 'transparent', color: '#64748b', cursor: 'pointer', fontSize: '22px', lineHeight: 1 }}>x</button>
+            </div>
+
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '14px' }}>
+              <input
+                type="text"
+                value={newReminderEmail}
+                onChange={e => setNewReminderEmail(e.target.value)}
+                placeholder="person@company.com"
+                style={{ flex: '1 1 260px', padding: '10px', border: '1px solid #cbd5e1', borderRadius: '6px' }}
+              />
+              <button type="button" disabled={savingEmail} onClick={addReminderEmail} style={{ padding: '10px 14px', border: 0, borderRadius: '6px', background: savingEmail ? '#94a3b8' : '#0f766e', color: 'white', cursor: savingEmail ? 'not-allowed' : 'pointer', fontWeight: 800 }}>Add</button>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '300px', overflowY: 'auto' }}>
+              {companyEmails.length === 0 && <div style={{ padding: '18px', border: '1px dashed #cbd5e1', borderRadius: '6px', color: '#64748b' }}>No reminder mail IDs added.</div>}
+              {companyEmails.map(email => (
+                <div key={email} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: '6px', background: '#f8fafc' }}>
+                  <strong style={{ color: '#0f172a', fontSize: '14px' }}>{email}</strong>
+                  <button type="button" disabled={savingEmail} onClick={() => removeReminderEmail(email)} style={{ border: 0, background: 'transparent', color: '#dc2626', cursor: savingEmail ? 'not-allowed' : 'pointer', fontWeight: 800 }}>Remove</button>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '18px' }}>
+              <button type="button" onClick={() => setEmailModalOpen(false)} style={{ padding: '9px 14px', border: '1px solid #cbd5e1', borderRadius: '6px', background: 'white', color: '#0f172a', cursor: 'pointer', fontWeight: 800 }}>Done</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

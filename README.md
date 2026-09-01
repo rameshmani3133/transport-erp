@@ -46,6 +46,7 @@ Set these values in `.env` or Render:
 - `REMINDER_FROM_EMAIL`: a verified Brevo sender email.
 - `REMINDER_TO_EMAIL`: default comma-separated recipient list.
 - `REMINDER_DAYS_AHEAD`: due window, default `30`.
+- `REMINDER_TRIGGER_DAYS`: automatic send days before due date, default `30,15,7,3,2,1`.
 - `REMINDER_EMAIL_ENABLED=true`: enables the daily automatic send at `REMINDER_DAILY_TIME`.
 
 ## How to Deploy to GoDaddy cPanel

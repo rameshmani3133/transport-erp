@@ -8,6 +8,7 @@ const prisma = new PrismaClient();
 function loanPayload(req, d) {
     const lenderName = text(d.lenderName);
     if (!lenderName) throw new Error('Bank / finance name is required.');
+    const nextDueDate = toRequiredDate(d.nextDueDate || d.monthlyDueDate, 'Monthly due date');
     return {
         tenantKey: req.tenantKey,
         loanNo: text(d.loanNo, null) || null,
@@ -17,8 +18,8 @@ function loanPayload(req, d) {
         principalAmount: toNumber(d.principalAmount),
         outstandingAmount: toNumber(d.outstandingAmount),
         emiAmount: toNumber(d.emiAmount),
-        dueDay: toInt(d.dueDay),
-        nextDueDate: toRequiredDate(d.nextDueDate, 'Next due date'),
+        dueDay: nextDueDate.getDate(),
+        nextDueDate,
         startDate: toDate(d.startDate),
         endDate: toDate(d.endDate),
         status: d.status || 'Active',
