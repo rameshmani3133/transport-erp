@@ -42,6 +42,7 @@ const adminRouter = require('./routes/admin');
 const paymentsRouter = require('./routes/payments');
 const loansRouter = require('./routes/loans');
 const remindersRouter = require('./routes/reminders');
+const recycleBinRouter = require('./routes/recycleBin');
 
 // ==========================================
 // MOUNT API ROUTES
@@ -62,6 +63,7 @@ app.use('/api/admin', adminRouter);
 app.use('/api/payments', paymentsRouter);
 app.use('/api/loans', loansRouter);
 app.use('/api/reminders', remindersRouter);
+app.use('/api/recycle-bin', recycleBinRouter);
 app.use('/api/driver-settlements', require('./routes/driverSettlements'));
 
 
@@ -93,4 +95,3 @@ start().catch((error) => {
     console.error('Startup failed:', error);
     process.exit(1);
 });
-
