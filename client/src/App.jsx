@@ -20,7 +20,6 @@ import PaymentVouchers from './pages/PaymentVouchers';
 import AdminUsers from './pages/AdminUsers';
 import LoanTracking from './pages/LoanTracking';
 import Reminders from './pages/Reminders';
-import RecycleBin from './pages/RecycleBin';
 
 function profileScore(profile) {
   const isPlaceholder = String(profile.companyName || '').trim().toLowerCase() === 'default company';
@@ -210,7 +209,6 @@ export default function App() {
           <div className="nav-group">
             <div className="nav-group-title">Admin</div>
             <NavLink to="/admin/users" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Users & Backups</NavLink>
-            <NavLink to="/admin/recycle-bin" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Recycle Bin</NavLink>
           </div>
         )}
       </nav>
@@ -236,7 +234,6 @@ export default function App() {
           <Route path="/routes" element={<RouteMaster />} />
           <Route path="/driver-settlements" element={<DriverSettlement />} />
           {isSuperAdmin && <Route path="/admin/users" element={<AdminUsers profiles={profiles} onCompaniesChanged={loadProfiles} />} />}
-          {isSuperAdmin && <Route path="/admin/recycle-bin" element={<RecycleBin />} />}
         </Routes>
       </main>
     </div>

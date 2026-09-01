@@ -461,8 +461,7 @@ export default function TripManagement() {
           </div>
       </div>
 
-      <DataTable data={filteredTrips} columns={columns} title="Active & Completed Trips" />
+      <DataTable data={filteredTrips} columns={columns} title="Active & Completed Trips" recycleBinType="trips" onRecycleChanged={fetchData} />
     </div>
   );
 }
-

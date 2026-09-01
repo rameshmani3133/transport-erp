@@ -254,7 +254,7 @@ export default function VendorSettlement() {
                 </div>
             </form>
 
-            <DataTable data={settlements} columns={columns} title="Settlement History" />
+            <DataTable data={settlements} columns={columns} title="Settlement History" recycleBinType="vendorSettlements" onRecycleChanged={fetchData} />
         </div>
     );
 }

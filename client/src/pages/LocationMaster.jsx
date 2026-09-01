@@ -158,7 +158,7 @@ export default function LocationMaster() {
           </div>
       </form>
 
-      <DataTable data={locations} columns={columns} title="Registered Billing Locations" />
+      <DataTable data={locations} columns={columns} title="Registered Billing Locations" recycleBinType="billingLocations" onRecycleChanged={fetchData} />
     </div>
   );
 }

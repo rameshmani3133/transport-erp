@@ -697,7 +697,7 @@ export default function Billing() {
         </div>
       </form>
 
-      <DataTable data={invoices} columns={columns} title="Invoice History" />
+      <DataTable data={invoices} columns={columns} title="Invoice History" recycleBinType="invoices" onRecycleChanged={fetchData} />
     </div>
   );
 }
