@@ -139,6 +139,7 @@ model Loan {
   lenderIfscCode  String?
   lenderBranch    String?
   paymentStatus   String    @default("Due")
+  paidDate        DateTime?
   financeAccountId Int?
   financeAccount  Account?  @relation("FinanceLoans", fields: [financeAccountId], references: [id])
   vehicleId       Int?

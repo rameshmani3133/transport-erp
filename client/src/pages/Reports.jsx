@@ -198,6 +198,7 @@ export default function Reports() {
         { header: 'Outstanding', key: 'outstandingAmount', render: loan => <strong>{money(loan.outstandingAmount)}</strong>, exportValue: loan => loan.outstandingAmount },
         { header: 'EMI', key: 'emiAmount', render: loan => money(loan.emiAmount), exportValue: loan => loan.emiAmount },
         { header: 'Monthly Due Date', key: 'nextDueDate', render: loan => dateText(loan.nextDueDate), exportValue: loan => dateText(loan.nextDueDate) },
+        { header: 'Paid Date', key: 'paidDate', render: loan => dateText(loan.paidDate), exportValue: loan => dateText(loan.paidDate) },
         { header: 'Payment Status', key: 'paymentStatus', render: loan => loan.paymentStatus || 'Due', exportValue: loan => loan.paymentStatus || 'Due' },
         { header: 'Loan Status', key: 'status', render: loan => loan.status, exportValue: loan => loan.status }
     ];

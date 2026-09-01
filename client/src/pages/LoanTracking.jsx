@@ -18,6 +18,7 @@ const initialLoan = {
   lenderIfscCode: '',
   lenderBranch: '',
   paymentStatus: 'Due',
+  paidDate: '',
   financeAccountId: '',
   vehicleId: '',
   principalAmount: '',
@@ -66,6 +67,7 @@ export default function LoanTracking() {
       lenderIfscCode: loan.lenderIfscCode || '',
       lenderBranch: loan.lenderBranch || '',
       paymentStatus: loan.paymentStatus || 'Due',
+      paidDate: loan.paidDate ? new Date(loan.paidDate).toISOString().split('T')[0] : '',
       financeAccountId: loan.financeAccountId || '',
       vehicleId: loan.vehicleId || '',
       principalAmount: loan.principalAmount || '',
@@ -102,10 +104,16 @@ export default function LoanTracking() {
   };
 
   const updatePaymentStatus = async (loan, paymentStatus) => {
+    let paidDate = loan.paidDate ? new Date(loan.paidDate).toISOString().split('T')[0] : today();
+    if (paymentStatus === 'Paid') {
+      paidDate = window.prompt('Enter paid date (YYYY-MM-DD)', paidDate);
+      if (!paidDate) return;
+      if (Number.isNaN(new Date(paidDate).getTime())) return alert('Enter a valid paid date.');
+    }
     const res = await fetch(`/api/loans/${loan.id}/payment-status`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ paymentStatus })
+      body: JSON.stringify({ paymentStatus, paidDate })
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) return alert(data.error || 'Failed to update payment status.');
@@ -123,6 +131,7 @@ export default function LoanTracking() {
     { header: 'Outstanding', key: 'outstandingAmount', render: loan => <strong>{money(loan.outstandingAmount)}</strong>, exportValue: loan => loan.outstandingAmount },
     { header: 'EMI', key: 'emiAmount', render: loan => money(loan.emiAmount), exportValue: loan => loan.emiAmount },
     { header: 'Monthly Due Date', key: 'nextDueDate', render: loan => dateText(loan.nextDueDate), exportValue: loan => dateText(loan.nextDueDate) },
+    { header: 'Paid Date', key: 'paidDate', render: loan => dateText(loan.paidDate), exportValue: loan => dateText(loan.paidDate) },
     { header: 'Payment Status', key: 'paymentStatus', render: loan => (
       <select value={loan.paymentStatus || 'Due'} onChange={e => updatePaymentStatus(loan, e.target.value)} style={{ ...fieldStyle, minWidth: '120px', fontWeight: 800 }}>
         <option value="Due">Due</option>
@@ -168,6 +177,7 @@ export default function LoanTracking() {
           <Field label="Outstanding Amount"><input type="number" step="any" value={formData.outstandingAmount} onChange={e => setField('outstandingAmount', e.target.value)} required style={fieldStyle} /></Field>
           <Field label="EMI / Due Amount"><input type="number" step="any" value={formData.emiAmount} onChange={e => setField('emiAmount', e.target.value)} required style={fieldStyle} /></Field>
           <Field label="Monthly Due Date"><input type="date" value={formData.nextDueDate} onChange={e => setField('nextDueDate', e.target.value)} required style={fieldStyle} /></Field>
+          <Field label="Paid Date"><input type="date" value={formData.paidDate} onChange={e => setField('paidDate', e.target.value)} style={fieldStyle} /></Field>
           <Field label="Payment Status">
             <select value={formData.paymentStatus} onChange={e => setField('paymentStatus', e.target.value)} style={fieldStyle}>
               <option value="Due">Due</option>
