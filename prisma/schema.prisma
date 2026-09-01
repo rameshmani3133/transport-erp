@@ -278,6 +278,15 @@ model Invoice {
   sacCode         String?
   vendorCode      String?
   poMigo          String?
+  invoiceFormat   String            @default("Standard")
+  periodFrom      DateTime?
+  periodTo        DateTime?
+  transportationMode String?
+  vehicleNo       String?
+  productService  String?
+  gstType         String?
+  gstPercent      Float             @default(0)
+  declaration     String?
   showStatus      Boolean           @default(false)
   date            DateTime          @default(now())
   dueDate         DateTime?
@@ -533,5 +542,4 @@ model BackupRun {
   message     String?
   createdAt   DateTime  @default(now())
 }
-
 

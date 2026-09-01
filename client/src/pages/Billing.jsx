@@ -3,6 +3,7 @@ import DataTable from '../components/DataTable';
 
 const today = () => new Date().toISOString().split('T')[0];
 const num = (value) => Number(value || 0);
+const roundMoney = (value) => Math.round((num(value) + Number.EPSILON) * 100) / 100;
 const money = (value) => `Rs.${num(value).toFixed(2)}`;
 const formatDate = (value) => value ? new Date(value).toLocaleDateString() : '-';
 const inputDate = (value) => value ? new Date(value).toISOString().split('T')[0] : '';
@@ -25,8 +26,10 @@ const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => 
 }[char]));
 
 function amountInWords(value) {
-  const amount = Math.round(num(value));
-  if (!amount) return 'Rupees Zero Only';
+  const numericValue = Math.max(num(value), 0);
+  const amount = Math.floor(numericValue);
+  const paise = Math.round((numericValue - amount) * 100);
+  if (!amount && !paise) return 'Rupees Zero Only';
   const ones = ['', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
   const tens = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
   const belowHundred = n => n < 20 ? ones[n] : `${tens[Math.floor(n / 10)]}${n % 10 ? ` ${ones[n % 10]}` : ''}`;
@@ -44,7 +47,9 @@ function amountInWords(value) {
   if (lakh) parts.push(`${belowThousand(lakh)} lakh`);
   if (thousand) parts.push(`${belowThousand(thousand)} thousand`);
   if (rest) parts.push(belowThousand(rest));
-  return `Rupees ${titleCase(parts.join(' '))} Only`;
+  const rupeeWords = amount ? titleCase(parts.join(' ')) : 'Zero';
+  const paiseWords = paise ? ` and ${titleCase(belowHundred(paise))} Paise` : '';
+  return `Rupees ${rupeeWords}${paiseWords} Only`;
 }
 
 const initialInvoice = {
@@ -53,6 +58,13 @@ const initialInvoice = {
   sacCode: '',
   vendorCode: '',
   poMigo: '',
+  taxableAmount: '',
+  periodFrom: '',
+  periodTo: '',
+  transportationMode: 'By Road',
+  vehicleNo: '',
+  productService: 'Transport Charges',
+  declaration: 'I/we have taken registration under the CGST Act, 2017 and have exercised the option to pay tax on services of GTA in relation to transport of goods supplied by us under forward charge.',
   showStatus: false,
   date: today(),
   dueDate: '',
@@ -90,6 +102,7 @@ export default function Billing() {
   const [locations, setLocations] = useState([]);
   const [trips, setTrips] = useState([]);
   const [accounts, setAccounts] = useState([]);
+  const [vehicles, setVehicles] = useState([]);
   const [selectedTripIds, setSelectedTripIds] = useState([]);
   const [formData, setFormData] = useState(initialInvoice);
   const [editId, setEditId] = useState(null);
@@ -102,16 +115,18 @@ export default function Billing() {
 
   const fetchData = async () => {
     try {
-      const [invRes, locRes, tripRes, accRes] = await Promise.all([
+      const [invRes, locRes, tripRes, accRes, vehicleRes] = await Promise.all([
         fetch('/api/invoices'),
         fetch('/api/locations'),
         fetch('/api/trips'),
-        fetch('/api/ledger/accounts')
+        fetch('/api/ledger/accounts'),
+        fetch('/api/vehicles')
       ]);
       if (invRes.ok) setInvoices(await invRes.json());
       if (locRes.ok) setLocations(await locRes.json());
       if (tripRes.ok) setTrips(await tripRes.json());
       if (accRes.ok) setAccounts(await accRes.json());
+      if (vehicleRes.ok) setVehicles(await vehicleRes.json());
     } catch (err) {
       console.error('Error fetching billing data:', err);
     }
@@ -120,6 +135,7 @@ export default function Billing() {
   useEffect(() => { fetchData(); }, []);
 
   const selectedLocation = locations.find(l => String(l.id) === String(formData.locationId));
+  const isIocl = selectedLocation?.invoiceFormat === 'IOCL INVOICE';
   const mappedClientAccount = selectedLocation
     ? accounts.find(a => String(a.clientId) === String(selectedLocation.companyId))
     : null;
@@ -157,17 +173,20 @@ export default function Billing() {
   );
 
   useEffect(() => {
-    const subTotal = selectedTrips.reduce((sum, trip) => sum + num(trip.totalClientBill), 0);
+    const subTotal = isIocl
+      ? Math.max(num(formData.taxableAmount), 0)
+      : selectedTrips.reduce((sum, trip) => sum + num(trip.totalClientBill), 0);
     const rate = num(gstPercent);
-    const cgst = gstType === 'CGST_SGST' ? subTotal * (rate / 2) / 100 : 0;
-    const sgst = gstType === 'CGST_SGST' ? subTotal * (rate / 2) / 100 : 0;
-    const igst = gstType === 'IGST' ? subTotal * rate / 100 : 0;
-    const otherCharges = num(formData.otherCharges);
-    const grandTotal = subTotal + cgst + sgst + igst + otherCharges;
-    const advanceReceived = selectedTrips.reduce((sum, trip) => sum + num(trip.clientAdvanceAmount), 0);
+    const totalTax = roundMoney(subTotal * rate / 100);
+    const cgst = gstType === 'CGST_SGST' ? roundMoney(totalTax / 2) : 0;
+    const sgst = gstType === 'CGST_SGST' ? roundMoney(totalTax - cgst) : 0;
+    const igst = gstType === 'IGST' ? totalTax : 0;
+    const otherCharges = isIocl ? 0 : num(formData.otherCharges);
+    const grandTotal = roundMoney(subTotal + cgst + sgst + igst + otherCharges);
+    const advanceReceived = isIocl ? 0 : selectedTrips.reduce((sum, trip) => sum + num(trip.clientAdvanceAmount), 0);
     const balanceAmount = Math.max(grandTotal - advanceReceived, 0);
     setFormData(prev => ({ ...prev, subTotal, cgst, sgst, igst, grandTotal, advanceReceived, balanceAmount }));
-  }, [selectedTrips, formData.otherCharges, gstType, gstPercent]);
+  }, [selectedTrips, formData.otherCharges, formData.taxableAmount, gstType, gstPercent, isIocl]);
 
   const resetForm = () => {
     setFormData(initialInvoice);
@@ -190,6 +209,13 @@ export default function Billing() {
       sacCode: invoice.sacCode || '',
       vendorCode: invoice.vendorCode || '',
       poMigo: invoice.poMigo || '',
+      taxableAmount: num(invoice.subTotal),
+      periodFrom: inputDate(invoice.periodFrom),
+      periodTo: inputDate(invoice.periodTo),
+      transportationMode: invoice.transportationMode || 'By Road',
+      vehicleNo: invoice.vehicleNo || '',
+      productService: invoice.productService || 'Transport Charges',
+      declaration: invoice.declaration || initialInvoice.declaration,
       showStatus: Boolean(invoice.showStatus),
       date: inputDate(invoice.date),
       dueDate: inputDate(invoice.dueDate),
@@ -205,7 +231,7 @@ export default function Billing() {
     });
     const taxTotal = num(invoice.cgst) + num(invoice.sgst) + num(invoice.igst);
     setGstType(num(invoice.igst) > 0 ? 'IGST' : 'CGST_SGST');
-    setGstPercent(num(invoice.subTotal) > 0 ? Number(((taxTotal / num(invoice.subTotal)) * 100).toFixed(2)) : 18);
+    setGstPercent(invoice.gstPercent ?? (num(invoice.subTotal) > 0 ? Number(((taxTotal / num(invoice.subTotal)) * 100).toFixed(2)) : 18));
     setSelectedTripIds((invoice.trips || []).map(t => t.id));
     setFilterStartDate('');
     setFilterEndDate('');
@@ -217,13 +243,15 @@ export default function Billing() {
   const handleSubmit = async (event) => {
     event.preventDefault();
     if (!formData.clientAccountId || !formData.incomeAccountId) return alert('Please select both a Client and Income Account.');
-    if (!selectedTripIds.length) return alert('Please select at least one trip to bill.');
+    if (!isIocl && !selectedTripIds.length) return alert('Please select at least one trip to bill.');
+    if (isIocl && !formData.invoiceNo.trim()) return alert('Invoice number is required for IOCL invoices.');
+    if (isIocl && num(formData.taxableAmount) <= 0) return alert('Enter a taxable amount greater than zero.');
 
     try {
       const response = await fetch(editId ? `/api/invoices/${editId}` : '/api/invoices', {
         method: editId ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...formData, tripIds: selectedTripIds })
+        body: JSON.stringify({ ...formData, invoiceFormat: isIocl ? 'IOCL INVOICE' : 'Standard', gstType, gstPercent, tripIds: isIocl ? [] : selectedTripIds })
       });
       const text = await response.text();
       const data = text ? JSON.parse(text) : {};
@@ -279,6 +307,38 @@ export default function Billing() {
     const vendorCode = invoice.vendorCode || invoice.location?.company?.vendorCode || '';
     const poMigo = invoice.poMigo || '';
     const statusRow = invoice.showStatus ? `<div class="meta-row"><strong>Status</strong><span>${escapeHtml(invoice.status || '-')}</span></div>` : '';
+    if (invoice.invoiceFormat === 'IOCL INVOICE') {
+      const gstLabel = invoice.gstType === 'CGST_SGST' ? 'CGST + SGST' : 'IGST';
+      const supplierStateCode = String(profile.gstNumber || '').slice(0, 2) || '-';
+      const receiverStateCode = String(invoice.location?.gstNumber || '').slice(0, 2) || '-';
+      printWindow.document.write(`
+        <html><head><title>${escapeHtml(invoice.invoiceNo)} - IOCL Invoice</title><style>
+          @page { size:A4 portrait; margin:10mm } *{box-sizing:border-box} body{font-family:Arial,sans-serif;color:#111;margin:0;font-size:12px}
+          .head{display:flex;justify-content:space-between;align-items:flex-start;padding:16px 8px;border-bottom:3px double #222}.head h1{font-size:28px;letter-spacing:3px;margin:0}.addr{line-height:1.5;max-width:280px}
+          .box{border:1px solid #222;margin-top:24px}.title{text-align:center;font-size:20px;font-weight:800;padding:8px;border-bottom:1px solid #222}.grid{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid #222}.cell{padding:10px;line-height:1.8}.cell+ .cell{border-left:1px solid #222}
+          .receiver{padding:8px;border-bottom:1px solid #222;line-height:1.65}.receiver h3{margin:0 0 7px}.items{width:100%;border-collapse:collapse}.items th,.items td{border:1px solid #444;padding:9px}.items th{background:#e5e7eb}.right{text-align:right}.center{text-align:center}.strong{font-weight:800;font-size:15px}
+          .words,.declaration{padding:10px;border-top:1px solid #222}.declaration{min-height:150px}.sign{text-align:right;margin-top:35px;font-weight:700}
+        </style></head><body>
+          <div class="head"><h1>${escapeHtml(supplierName)}</h1><div class="addr">${escapeHtml(supplierAddress || '-')}<br>GSTIN: ${escapeHtml(profile.gstNumber || '-')}</div></div>
+          <div class="box"><div class="title">TAX INVOICE</div>
+            <div class="grid"><div class="cell"><strong>Invoice No:</strong> ${escapeHtml(invoice.invoiceNo)}<br><strong>Invoice Date:</strong> ${escapeHtml(formatDate(invoice.date))}<br><strong>State Code:</strong> ${escapeHtml(supplierStateCode)}<br><strong>GST:</strong> ${escapeHtml(profile.gstNumber || '-')}</div>
+            <div class="cell"><strong>Transportation Mode:</strong> ${escapeHtml(invoice.transportationMode || 'By Road')}<br><strong>Vehicle No:</strong> ${escapeHtml(invoice.vehicleNo || '-')}<br><strong>Vendor Code:</strong> ${escapeHtml(invoice.vendorCode || invoice.location?.company?.vendorCode || '-')}<br><strong>Period:</strong> ${escapeHtml(formatDate(invoice.periodFrom))} to ${escapeHtml(formatDate(invoice.periodTo))}</div></div>
+            <div class="receiver"><h3>Details of Receiver / Billed to</h3><strong>Name:</strong> ${escapeHtml(clientName)}<br><strong>Address:</strong> ${escapeHtml(clientAddress || '-')}<br><strong>GSTIN:</strong> ${escapeHtml(invoice.location?.gstNumber || '-')}<br><strong>State Code:</strong> ${escapeHtml(receiverStateCode)}</div>
+            <table class="items"><thead><tr><th style="width:12%">Slr No</th><th>Name of Product / Service</th><th style="width:18%">SAC</th><th style="width:24%">Total Amount (Rs.)</th></tr></thead><tbody>
+              <tr><td class="center">1</td><td>${escapeHtml(invoice.productService || 'Transport Charges')}</td><td class="center">${escapeHtml(invoice.sacCode || '-')}</td><td class="right">${num(invoice.subTotal).toFixed(2)}</td></tr>
+              <tr class="strong"><td colspan="3" class="right">Sub Total</td><td class="right">${num(invoice.subTotal).toFixed(2)}</td></tr>
+              ${invoice.gstType === 'CGST_SGST'
+                ? `<tr><td colspan="3" class="right">CGST ${num(invoice.gstPercent) / 2}%</td><td class="right">${num(invoice.cgst).toFixed(2)}</td></tr><tr><td colspan="3" class="right">SGST ${num(invoice.gstPercent) / 2}%</td><td class="right">${num(invoice.sgst).toFixed(2)}</td></tr>`
+                : `<tr><td colspan="3" class="right">${gstLabel} ${num(invoice.gstPercent)}%</td><td class="right">${num(invoice.igst).toFixed(2)}</td></tr>`}
+              <tr class="strong"><td colspan="3" class="right">Total</td><td class="right">${num(invoice.grandTotal).toFixed(2)}</td></tr>
+            </tbody></table>
+            <div class="words"><strong>Rupees:</strong> ${escapeHtml(amountInWords(invoice.grandTotal))}</div>
+            <div class="declaration"><strong>Declaration</strong><p>${escapeHtml(invoice.declaration || '-')}</p><div class="sign">For ${escapeHtml(supplierName)}<br><br><br>${escapeHtml(profile.signatoryRole || 'Authorized Signatory')}</div></div>
+          </div><script>window.onload=()=>{window.print();window.close()}</script>
+        </body></html>`);
+      printWindow.document.close();
+      return;
+    }
     const tripRows = invoiceTrips.map((trip, index) => `
       <tr>
         <td class="center">${index + 1}</td>
@@ -541,7 +601,15 @@ export default function Billing() {
           <Field label="Billing Location">
             <select name="locationId" value={formData.locationId} onChange={(e) => {
               const location = locations.find(item => String(item.id) === String(e.target.value));
-              setFormData({ ...formData, locationId: e.target.value, vendorCode: location?.company?.vendorCode || '' });
+              setFormData({
+                ...formData,
+                locationId: e.target.value,
+                vendorCode: location?.company?.vendorCode || '',
+                taxableAmount: '',
+                vehicleNo: '',
+                periodFrom: '',
+                periodTo: ''
+              });
               setSelectedTripIds([]);
             }} required style={fieldStyle}>
               <option value="">-- Select Location --</option>
@@ -554,10 +622,36 @@ export default function Billing() {
               name="invoiceNo"
               value={formData.invoiceNo}
               onChange={e => setFormData({ ...formData, invoiceNo: e.target.value })}
-              placeholder="First invoice manual, then auto"
+              placeholder={isIocl ? 'Enter IOCL invoice number' : 'First invoice manual, then auto'}
+              required={isIocl}
               style={fieldStyle}
             />
           </Field>
+          {isIocl && <>
+            <Field label="Period From">
+              <input type="date" value={formData.periodFrom} onChange={e => setFormData({ ...formData, periodFrom: e.target.value })} required style={fieldStyle} />
+            </Field>
+            <Field label="Period To">
+              <input type="date" value={formData.periodTo} onChange={e => setFormData({ ...formData, periodTo: e.target.value })} required style={fieldStyle} />
+            </Field>
+            <Field label="Transportation Mode">
+              <select value={formData.transportationMode} onChange={e => setFormData({ ...formData, transportationMode: e.target.value })} style={fieldStyle}>
+                <option value="By Road">By Road</option>
+              </select>
+            </Field>
+            <Field label="Vehicle Number">
+              <select value={formData.vehicleNo} onChange={e => setFormData({ ...formData, vehicleNo: e.target.value })} required style={fieldStyle}>
+                <option value="">-- Select Vehicle --</option>
+                {vehicles.map(vehicle => <option key={vehicle.id} value={vehicle.regNo}>{vehicle.regNo}</option>)}
+              </select>
+            </Field>
+            <Field label="Product / Service">
+              <select value={formData.productService} onChange={e => setFormData({ ...formData, productService: e.target.value })} style={fieldStyle}>
+                <option value="Transport Charges">Transport Charges</option>
+                <option value="Freight Charges">Freight Charges</option>
+              </select>
+            </Field>
+          </>}
           <Field label="Client Ledger - Dr">
             <select name="clientAccountId" value={formData.clientAccountId} onChange={e => setFormData({ ...formData, clientAccountId: e.target.value })} required style={{ ...fieldStyle, borderColor: '#bfdbfe', backgroundColor: '#eff6ff' }}>
               <option value="">-- Select Client Debtor --</option>
@@ -577,25 +671,32 @@ export default function Billing() {
             <input type="date" name="dueDate" value={formData.dueDate} onChange={e => setFormData({ ...formData, dueDate: e.target.value })} style={fieldStyle} />
           </Field>
           <Field label="SAC Code">
-            <input type="text" name="sacCode" value={formData.sacCode} onChange={e => setFormData({ ...formData, sacCode: e.target.value })} placeholder="996511" style={fieldStyle} />
+            {isIocl ? (
+              <select name="sacCode" value={formData.sacCode} onChange={e => setFormData({ ...formData, sacCode: e.target.value })} required style={fieldStyle}>
+                <option value="">-- Select SAC --</option>
+                <option value="996791">996791</option>
+                <option value="996511">996511</option>
+              </select>
+            ) : <input type="text" name="sacCode" value={formData.sacCode} onChange={e => setFormData({ ...formData, sacCode: e.target.value })} placeholder="996511" style={fieldStyle} />}
           </Field>
           <Field label="Vendor Code">
-            <input type="text" name="vendorCode" value={formData.vendorCode} onChange={e => setFormData({ ...formData, vendorCode: e.target.value })} placeholder="Client vendor code" style={fieldStyle} />
+            <input type="text" name="vendorCode" value={formData.vendorCode} onChange={e => setFormData({ ...formData, vendorCode: e.target.value })} placeholder="Client vendor code" readOnly={isIocl} style={{ ...fieldStyle, backgroundColor: isIocl ? '#f1f5f9' : 'white' }} />
           </Field>
-          <Field label="PO / MIGO">
+          {!isIocl && <Field label="PO / MIGO">
             <input type="text" name="poMigo" value={formData.poMigo} onChange={e => setFormData({ ...formData, poMigo: e.target.value })} placeholder="PO or MIGO reference" style={fieldStyle} />
-          </Field>
-          <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px', paddingBottom: '8px' }}>
+          </Field>}
+          {!isIocl && <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px', paddingBottom: '8px' }}>
             <input id="showStatus" type="checkbox" checked={formData.showStatus} onChange={e => setFormData({ ...formData, showStatus: e.target.checked })} />
             <label htmlFor="showStatus" style={{ fontSize: '12px', fontWeight: 700, color: '#475569' }}>Show status on invoice</label>
-          </div>
-          <div style={{ gridColumn: '1 / -1' }}>
+          </div>}
+          {!isIocl && <div style={{ gridColumn: '1 / -1' }}>
             <Field label="Invoice Description">
               <input type="text" name="description" value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} placeholder="Freight charges as per annexure" style={fieldStyle} />
             </Field>
-          </div>
+          </div>}
         </div>
 
+        {!isIocl && <>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px', marginBottom: '15px', gap: '12px', flexWrap: 'wrap' }}>
           <h3 style={{ fontSize: '14px', color: '#334155', margin: 0 }}>2. Select Trips {selectedLocation ? `for ${selectedLocation.company?.companyName}` : ''}</h3>
           <span style={{ fontSize: '12px', fontWeight: 'bold', color: '#3b82f6', backgroundColor: '#eff6ff', padding: '4px 10px', borderRadius: '4px' }}>Selected: {selectedTripIds.length}</span>
@@ -659,6 +760,7 @@ export default function Billing() {
             </table>
           )}
         </div>
+        </>}
 
         <h3 style={{ fontSize: '14px', color: '#334155', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px', marginBottom: '15px' }}>3. Taxes & Adjustments</h3>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px', marginBottom: '25px' }}>
@@ -669,14 +771,21 @@ export default function Billing() {
             </select>
           </Field>
           <Field label="GST %">
-            <input type="number" step="any" value={gstPercent} onChange={e => setGstPercent(e.target.value)} style={fieldStyle} />
+            {isIocl ? <select value={gstPercent} onChange={e => setGstPercent(Number(e.target.value))} style={fieldStyle}>
+              {[0, 5, 12, 18, 28].map(rate => <option key={rate} value={rate}>{rate}%</option>)}
+            </select> : <input type="number" step="any" value={gstPercent} onChange={e => setGstPercent(e.target.value)} style={fieldStyle} />}
           </Field>
-          <Field label="Subtotal">
-            <input type="number" value={num(formData.subTotal).toFixed(2)} readOnly style={{ ...fieldStyle, backgroundColor: '#f1f5f9', fontWeight: 'bold' }} />
+          <Field label={isIocl ? 'Taxable Amount' : 'Subtotal'}>
+            <input type="number" min="0" step="0.01" value={isIocl ? formData.taxableAmount : num(formData.subTotal).toFixed(2)} onChange={isIocl ? e => setFormData({ ...formData, taxableAmount: e.target.value }) : undefined} readOnly={!isIocl} required={isIocl} style={{ ...fieldStyle, backgroundColor: isIocl ? 'white' : '#f1f5f9', fontWeight: 'bold' }} />
           </Field>
-          <Field label="Other Charges">
+          {!isIocl && <Field label="Other Charges">
             <input type="number" name="otherCharges" value={formData.otherCharges} onChange={e => setFormData({ ...formData, otherCharges: e.target.value })} style={fieldStyle} />
-          </Field>
+          </Field>}
+          {isIocl && <Field label="Declaration">
+            <select value={formData.declaration} onChange={e => setFormData({ ...formData, declaration: e.target.value })} style={fieldStyle}>
+              <option value={initialInvoice.declaration}>GTA forward charge declaration</option>
+            </select>
+          </Field>}
         </div>
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#f0fdf4', padding: '15px', borderRadius: '8px', border: '1px solid #bbf7d0', gap: '15px', flexWrap: 'wrap' }}>

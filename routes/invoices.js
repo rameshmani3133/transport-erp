@@ -3,6 +3,7 @@ const { PrismaClient } = require('@prisma/client');
 const { withTenant } = require('./tenant');
 const { ensureStandardAccountingAccounts, ensureClientDieselAccount } = require('../lib/accountingAccounts');
 const { toNumber, toInt, toRequiredInt, toDate, text } = require('../lib/coerce');
+const { calculateIoclTotals } = require('../lib/invoiceMath');
 const router = express.Router();
 const prisma = new PrismaClient();
 
@@ -110,6 +111,25 @@ function invoiceTotals(selectedTrips, d) {
     return { subTotal, cgst, sgst, igst, otherCharges, grandTotal, advanceReceived };
 }
 
+function ioclInvoiceTotals(d) {
+    return calculateIoclTotals(d.taxableAmount, d.gstPercent, d.gstType);
+}
+
+function invoiceFormatData(d, location) {
+    const invoiceFormat = location.invoiceFormat === 'IOCL INVOICE' ? 'IOCL INVOICE' : 'Standard';
+    return {
+        invoiceFormat,
+        periodFrom: toDate(d.periodFrom),
+        periodTo: toDate(d.periodTo),
+        transportationMode: text(d.transportationMode, null) || null,
+        vehicleNo: text(d.vehicleNo, null) || null,
+        productService: text(d.productService, null) || null,
+        gstType: text(d.gstType, null) || null,
+        gstPercent: Math.max(toNumber(d.gstPercent), 0),
+        declaration: text(d.declaration, null) || null
+    };
+}
+
 router.get('/', async (req, res) => {
     try {
         const invoices = await prisma.invoice.findMany({
@@ -132,16 +152,19 @@ router.post('/', async (req, res) => {
             const selectedTrips = tripIds.length ? await tx.trip.findMany({
                 where: withTenant(req, { id: { in: tripIds }, invoiceId: null })
             }) : [];
-            if (selectedTrips.length !== tripIds.length) throw new Error('One or more selected trips are no longer available for billing.');
-            if (!selectedTrips.length) throw new Error('Please select at least one trip to bill.');
-
             const locationId = toRequiredInt(d.locationId, 'Billing location');
             const location = await tx.billingLocation.findFirst({ where: withTenant(req, { id: locationId }) });
             if (!location) throw new Error('Billing location not found.');
+            const isIocl = location.invoiceFormat === 'IOCL INVOICE';
+            if (selectedTrips.length !== tripIds.length) throw new Error('One or more selected trips are no longer available for billing.');
+            if (!isIocl && !selectedTrips.length) throw new Error('Please select at least one trip to bill.');
+            if (isIocl && !text(d.invoiceNo)) throw new Error('Invoice number is required for IOCL invoices.');
+            if (isIocl && toNumber(d.taxableAmount) <= 0) throw new Error('Taxable amount must be greater than zero.');
             if (selectedTrips.some(trip => trip.companyId !== location.companyId)) throw new Error('All selected trips must belong to the selected billing location client.');
             const invoiceNo = await resolveInvoiceNo(tx, req, d, location.companyId);
 
-            const { subTotal, cgst, sgst, igst, otherCharges, grandTotal, advanceReceived } = invoiceTotals(selectedTrips, d);
+            const totals = isIocl ? ioclInvoiceTotals(d) : invoiceTotals(selectedTrips, d);
+            const { subTotal, cgst, sgst, igst, otherCharges, grandTotal, advanceReceived } = totals;
             const balanceAmount = Math.max(grandTotal - advanceReceived, 0);
 
             const invoice = await tx.invoice.create({
@@ -152,6 +175,7 @@ router.post('/', async (req, res) => {
                     sacCode: text(d.sacCode, null) || null,
                     vendorCode: text(d.vendorCode, null) || null,
                     poMigo: text(d.poMigo, null) || null,
+                    ...invoiceFormatData(d, location),
                     showStatus: Boolean(d.showStatus),
                     date: toDate(d.date, new Date()),
                     dueDate: toDate(d.dueDate),
@@ -198,19 +222,22 @@ router.put('/:id', async (req, res) => {
             if (!existing) throw new Error('Invoice not found.');
 
             const tripIds = (d.tripIds || []).map(id => toInt(id)).filter(id => Number.isInteger(id));
-            if (!tripIds.length) throw new Error('Please select at least one trip to bill.');
+            const locationId = toRequiredInt(d.locationId, 'Billing location');
+            const location = await tx.billingLocation.findFirst({ where: withTenant(req, { id: locationId }) });
+            if (!location) throw new Error('Billing location not found.');
+            const isIocl = location.invoiceFormat === 'IOCL INVOICE';
+            if (!isIocl && !tripIds.length) throw new Error('Please select at least one trip to bill.');
+            if (isIocl && !text(d.invoiceNo)) throw new Error('Invoice number is required for IOCL invoices.');
+            if (isIocl && toNumber(d.taxableAmount) <= 0) throw new Error('Taxable amount must be greater than zero.');
 
-            const selectedTrips = await tx.trip.findMany({
+            const selectedTrips = tripIds.length ? await tx.trip.findMany({
                 where: withTenant(req, {
                     id: { in: tripIds },
                     OR: [{ invoiceId: null }, { invoiceId: invId }]
                 })
-            });
+            }) : [];
             if (selectedTrips.length !== tripIds.length) throw new Error('One or more selected trips are already billed in another invoice.');
 
-            const locationId = toRequiredInt(d.locationId, 'Billing location');
-            const location = await tx.billingLocation.findFirst({ where: withTenant(req, { id: locationId }) });
-            if (!location) throw new Error('Billing location not found.');
             if (selectedTrips.some(trip => trip.companyId !== location.companyId)) throw new Error('All selected trips must belong to the selected billing location client.');
             const invoiceNo = await resolveInvoiceNo(tx, req, d, location.companyId, invId);
 
@@ -228,7 +255,8 @@ router.put('/:id', async (req, res) => {
                 data: { invoiceId: invId, status: 'Billed' }
             });
 
-            const { subTotal, cgst, sgst, igst, otherCharges, grandTotal, advanceReceived } = invoiceTotals(selectedTrips, d);
+            const totals = isIocl ? ioclInvoiceTotals(d) : invoiceTotals(selectedTrips, d);
+            const { subTotal, cgst, sgst, igst, otherCharges, grandTotal, advanceReceived } = totals;
             const paymentTotal = existing.payments.reduce((sum, p) => sum + toNumber(p.amount), 0);
             const totalPaid = advanceReceived + paymentTotal;
             const balanceAmount = Math.max(grandTotal - totalPaid, 0);
@@ -241,6 +269,7 @@ router.put('/:id', async (req, res) => {
                     sacCode: text(d.sacCode, null) || null,
                     vendorCode: text(d.vendorCode, null) || null,
                     poMigo: text(d.poMigo, null) || null,
+                    ...invoiceFormatData(d, location),
                     showStatus: Boolean(d.showStatus),
                     date: toDate(d.date, existing.date),
                     dueDate: toDate(d.dueDate),
