@@ -256,7 +256,7 @@ export default function Billing() {
     if (!isManualTaxInvoice && !selectedTripIds.length) return alert('Please select at least one trip to bill.');
     if (isManualTaxInvoice && !formData.invoiceNo.trim()) return alert('Invoice number is required.');
     if (isManualTaxInvoice && num(formData.taxableAmount) <= 0) return alert('Enter a taxable amount greater than zero.');
-    if (isLpg && !formData.vehicleNos.length) return alert('Select at least one vehicle for the LPG invoice.');
+    if (isManualTaxInvoice && !formData.vehicleNos.length) return alert('Select at least one vehicle for the invoice.');
 
     try {
       const response = await fetch(editId ? `/api/invoices/${editId}` : '/api/invoices', {
@@ -674,7 +674,7 @@ export default function Billing() {
               </select>
             </Field>
             <Field label="Vehicle Number">
-              {isLpg ? (
+              {isManualTaxInvoice ? (
                 <div style={{ ...fieldStyle, maxHeight: '170px', overflowY: 'auto', backgroundColor: '#fff' }}>
                   {vehicles.length === 0 ? <span style={{ color: '#64748b' }}>No vehicles available.</span> : vehicles.map(vehicle => (
                     <label key={vehicle.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '5px 2px', cursor: 'pointer' }}>
@@ -698,7 +698,7 @@ export default function Billing() {
                   {vehicles.map(vehicle => <option key={vehicle.id} value={vehicle.regNo}>{vehicle.regNo}</option>)}
                 </select>
               )}
-              {isLpg && <span style={{ fontSize: '11px', color: '#475569' }}>Selected: {formData.vehicleNos.length}</span>}
+              {isManualTaxInvoice && <span style={{ fontSize: '11px', color: '#475569' }}>Selected: {formData.vehicleNos.length}</span>}
             </Field>
             <Field label="Product / Service">
               {isLpg ? (

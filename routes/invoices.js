@@ -122,7 +122,7 @@ function invoiceFormatData(d, location) {
         periodFrom: toDate(d.periodFrom),
         periodTo: toDate(d.periodTo),
         transportationMode: text(d.transportationMode, null) || null,
-        vehicleNo: location.invoiceFormat === 'LPG Bill'
+        vehicleNo: ['IOCL INVOICE', 'LPG Bill'].includes(location.invoiceFormat)
             ? [...new Set((Array.isArray(d.vehicleNos) ? d.vehicleNos : []).map(value => text(value, null)).filter(Boolean))].join(', ') || null
             : text(d.vehicleNo, null) || null,
         productService: text(d.productService, null) || null,
@@ -133,11 +133,11 @@ function invoiceFormatData(d, location) {
 }
 
 async function validateInvoiceVehicles(tx, req, d, location) {
-    const requested = location.invoiceFormat === 'LPG Bill'
+    const requested = ['IOCL INVOICE', 'LPG Bill'].includes(location.invoiceFormat)
         ? [...new Set((Array.isArray(d.vehicleNos) ? d.vehicleNos : []).map(value => text(value, null)).filter(Boolean))]
         : [text(d.vehicleNo, null)].filter(Boolean);
     if (['IOCL INVOICE', 'LPG Bill'].includes(location.invoiceFormat) && !requested.length) {
-        throw new Error(location.invoiceFormat === 'LPG Bill' ? 'Select at least one vehicle.' : 'Vehicle number is required.');
+        throw new Error('Select at least one vehicle.');
     }
     if (!requested.length) return;
     const count = await tx.vehicle.count({ where: withTenant(req, { regNo: { in: requested } }) });
