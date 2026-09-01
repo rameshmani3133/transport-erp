@@ -86,7 +86,7 @@ const resources = {
   },
   vehicles: {
     model: 'vehicle', label: 'Vehicles', tenantScoped: true,
-    select: { id: true, tenantKey: true, deletedAt: true, regNo: true, ownerName: true, vehicleType: true, status: true },
+    select: { id: true, tenantKey: true, deletedAt: true, regNo: true, ownerName: true, type: true, status: true },
     title: row => row.regNo,
   },
   vendorSettlements: {
