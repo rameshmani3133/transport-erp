@@ -101,7 +101,17 @@ export default function App() {
 
     fetch('/api/auth/me')
       .then(res => res.ok ? res.json() : Promise.reject())
-      .then(data => setUser(data.user))
+      .then(data => {
+        const restoredUser = data.user;
+        if (restoredUser?.role !== 'SUPERADMIN' && restoredUser?.companies?.length) {
+          const storedTenant = getTenantKey();
+          if (!restoredUser.companies.includes(storedTenant)) {
+            const nextTenant = setTenantKey(restoredUser.companies[0]);
+            setTenant(nextTenant);
+          }
+        }
+        setUser(restoredUser);
+      })
       .catch(() => {
         clearAuthSession();
         setUser(null);
@@ -117,7 +127,11 @@ export default function App() {
 
   const loadProfiles = async () => {
     const res = await fetch('/api/my-company/all');
-    const data = res.ok ? await res.json() : [];
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || 'Failed to load assigned companies.');
+    }
+    const data = await res.json();
     const list = dedupeProfiles(data);
     setProfiles(list);
     const allowedKeys = list.map(item => item.tenantKey);

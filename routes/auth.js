@@ -1,6 +1,6 @@
 const express = require('express');
 const { PrismaClient } = require('@prisma/client');
-const { hashPassword, verifyPassword, createToken, parseToken, sanitizeUser } = require('../lib/security');
+const { hashPassword, verifyPassword, createToken, parseToken, sanitizeUser, isSuperAdmin } = require('../lib/security');
 const { normalizeTenantKey } = require('./tenant');
 
 const router = express.Router();
@@ -18,6 +18,9 @@ async function requireAuth(req, res, next) {
   });
   if (!user) return res.status(401).json({ error: 'User is inactive or no longer exists.' });
   req.user = sanitizeUser(user);
+  if (!isSuperAdmin(req.user) && !req.user.companies.length) {
+    return res.status(403).json({ error: 'No active company is assigned to this user.' });
+  }
   next();
 }
 async function ensureSuperAdmin() {
@@ -64,7 +67,12 @@ router.post('/login', async (req, res) => {
     return res.status(401).json({ error: 'Invalid email or password.' });
   }
 
-  res.json({ token: createToken(user), user: sanitizeUser(user) });
+  const safeUser = sanitizeUser(user);
+  if (!isSuperAdmin(safeUser) && !safeUser.companies.length) {
+    return res.status(403).json({ error: 'No active company is assigned to this user. Contact the administrator.' });
+  }
+
+  res.json({ token: createToken(user), user: safeUser });
 });
 
 router.get('/me', requireAuth, async (req, res) => {

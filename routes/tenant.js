@@ -34,6 +34,10 @@ function tenantMiddleware(req, res, next) {
   req.tenantKey = getTenantKey(req);
 
   if (!req.user || isSuperAdmin(req.user)) return next();
+  // This endpoint is already scoped to req.user.companies in myCompany.js.
+  // Allow it through even when the browser still holds a company key that
+  // has since been removed, so the UI can recover to an allowed company.
+  if (req.path === '/my-company/all') return next();
   if (req.user.companies.includes(req.tenantKey)) return next();
 
   return res.status(403).json({ error: 'You are not assigned to this company.' });
