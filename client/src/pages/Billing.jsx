@@ -674,8 +674,13 @@ export default function Billing() {
               </select>
             </Field>
             <Field label="Vehicle Number">
-              {isManualTaxInvoice ? (
-                <div style={{ ...fieldStyle, maxHeight: '170px', overflowY: 'auto', backgroundColor: '#fff' }}>
+              <details style={{ position: 'relative' }}>
+                <summary style={{ ...fieldStyle, backgroundColor: '#fff', cursor: 'pointer', listStyle: 'none', minHeight: '36px' }}>
+                  {formData.vehicleNos.length
+                    ? `${formData.vehicleNos.length} vehicle${formData.vehicleNos.length === 1 ? '' : 's'} selected ▾`
+                    : '-- Select Vehicles -- ▾'}
+                </summary>
+                <div style={{ position: 'absolute', zIndex: 20, top: 'calc(100% + 4px)', left: 0, right: 0, maxHeight: '210px', overflowY: 'auto', backgroundColor: '#fff', border: '1px solid #cbd5e1', borderRadius: '4px', padding: '8px', boxShadow: '0 8px 20px rgba(15, 23, 42, 0.15)' }}>
                   {vehicles.length === 0 ? <span style={{ color: '#64748b' }}>No vehicles available.</span> : vehicles.map(vehicle => (
                     <label key={vehicle.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '5px 2px', cursor: 'pointer' }}>
                       <input
@@ -692,13 +697,7 @@ export default function Billing() {
                     </label>
                   ))}
                 </div>
-              ) : (
-                <select value={formData.vehicleNo} onChange={e => setFormData({ ...formData, vehicleNo: e.target.value })} required style={fieldStyle}>
-                  <option value="">-- Select Vehicle --</option>
-                  {vehicles.map(vehicle => <option key={vehicle.id} value={vehicle.regNo}>{vehicle.regNo}</option>)}
-                </select>
-              )}
-              {isManualTaxInvoice && <span style={{ fontSize: '11px', color: '#475569' }}>Selected: {formData.vehicleNos.length}</span>}
+              </details>
             </Field>
             <Field label="Product / Service">
               {isLpg ? (
