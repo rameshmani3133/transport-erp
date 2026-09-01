@@ -1,6 +1,6 @@
 const express = require('express');
 const { PrismaClient } = require('@prisma/client');
-const { actionableReminders, buildReminderItems, defaultReminderRecipients, parseRecipients, sendReminderEmail } = require('../lib/reminderService');
+const { buildReminderItems, defaultReminderRecipients, parseRecipients, sendReminderEmail } = require('../lib/reminderService');
 const router = express.Router();
 const prisma = new PrismaClient();
 
@@ -15,7 +15,6 @@ router.get('/', async (req, res) => {
 
 router.post('/email', async (req, res) => {
     try {
-        const daysAhead = Number(req.body.daysAhead || process.env.REMINDER_DAYS_AHEAD || 30);
         const companyRecipients = await defaultReminderRecipients(prisma, req.tenantKey);
         const userRecipients = parseRecipients(req.user?.reminderEmails);
         const fallbackRecipients = companyRecipients.length
@@ -25,16 +24,16 @@ router.post('/email', async (req, res) => {
                 : process.env.REMINDER_TO_EMAIL || req.user?.email || '';
         const recipients = parseRecipients(req.body.recipients || fallbackRecipients);
         const allItems = await buildReminderItems(prisma, req.tenantKey);
-        let items;
-        if (Array.isArray(req.body.itemIds)) {
-            const requestedIds = [...new Set(req.body.itemIds.map(id => String(id || '').trim()).filter(Boolean))];
-            if (!requestedIds.length) return res.status(400).json({ error: 'No filtered reminders selected.' });
-            if (requestedIds.length > 1000) return res.status(400).json({ error: 'Too many reminders selected.' });
-            const allowedIds = new Set(requestedIds);
-            items = allItems.filter(item => allowedIds.has(item.id));
-            if (!items.length) return res.status(400).json({ error: 'The filtered reminders are no longer available. Refresh and try again.' });
-        } else {
-            items = actionableReminders(allItems, Number.isFinite(daysAhead) ? daysAhead : 30);
+        if (!Array.isArray(req.body.itemIds)) {
+            return res.status(400).json({ error: 'Filtered reminder IDs are required. Refresh the page and try again.' });
+        }
+        const requestedIds = [...new Set(req.body.itemIds.map(id => String(id || '').trim()).filter(Boolean))];
+        if (!requestedIds.length) return res.status(400).json({ error: 'No filtered reminders selected.' });
+        if (requestedIds.length > 1000) return res.status(400).json({ error: 'Too many reminders selected.' });
+        const allowedIds = new Set(requestedIds);
+        const items = allItems.filter(item => allowedIds.has(item.id));
+        if (items.length !== requestedIds.length) {
+            return res.status(409).json({ error: 'The filtered reminder list changed. Refresh the page and try again.' });
         }
         const result = await sendReminderEmail({ recipients, items, tenantKey: req.tenantKey });
 
