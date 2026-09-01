@@ -134,6 +134,11 @@ model Loan {
   deletedAt       DateTime?
   loanNo          String?
   lenderName      String
+  lenderBankName  String?
+  lenderAccountNo String?
+  lenderIfscCode  String?
+  lenderBranch    String?
+  paymentStatus   String    @default("Due")
   financeAccountId Int?
   financeAccount  Account?  @relation("FinanceLoans", fields: [financeAccountId], references: [id])
   vehicleId       Int?

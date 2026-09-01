@@ -13,6 +13,11 @@ function Field({ label, children }) {
 const initialLoan = {
   loanNo: '',
   lenderName: '',
+  lenderBankName: '',
+  lenderAccountNo: '',
+  lenderIfscCode: '',
+  lenderBranch: '',
+  paymentStatus: 'Due',
   financeAccountId: '',
   vehicleId: '',
   principalAmount: '',
@@ -56,6 +61,11 @@ export default function LoanTracking() {
     setFormData({
       loanNo: loan.loanNo || '',
       lenderName: loan.lenderName || '',
+      lenderBankName: loan.lenderBankName || '',
+      lenderAccountNo: loan.lenderAccountNo || '',
+      lenderIfscCode: loan.lenderIfscCode || '',
+      lenderBranch: loan.lenderBranch || '',
+      paymentStatus: loan.paymentStatus || 'Due',
       financeAccountId: loan.financeAccountId || '',
       vehicleId: loan.vehicleId || '',
       principalAmount: loan.principalAmount || '',
@@ -91,15 +101,38 @@ export default function LoanTracking() {
     loadData();
   };
 
+  const updatePaymentStatus = async (loan, paymentStatus) => {
+    const res = await fetch(`/api/loans/${loan.id}/payment-status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ paymentStatus })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return alert(data.error || 'Failed to update payment status.');
+    setLoans(prev => prev.map(item => item.id === loan.id ? data : item));
+  };
+
   const columns = [
     { header: 'Loan No', key: 'loanNo', render: loan => <strong>{loan.loanNo || '-'}</strong> },
     { header: 'Bank / Finance', key: 'lenderName', render: loan => loan.lenderName },
+    { header: 'Provider Bank', key: 'lenderBankName', render: loan => loan.lenderBankName || '-' },
+    { header: 'Account No', key: 'lenderAccountNo', render: loan => loan.lenderAccountNo || '-' },
+    { header: 'IFSC', key: 'lenderIfscCode', render: loan => loan.lenderIfscCode || '-' },
     { header: 'Vehicle', key: 'vehicle.regNo', render: loan => loan.vehicle?.regNo || '-' },
     { header: 'Loan Amount', key: 'principalAmount', render: loan => money(loan.principalAmount), exportValue: loan => loan.principalAmount },
     { header: 'Outstanding', key: 'outstandingAmount', render: loan => <strong>{money(loan.outstandingAmount)}</strong>, exportValue: loan => loan.outstandingAmount },
     { header: 'EMI', key: 'emiAmount', render: loan => money(loan.emiAmount), exportValue: loan => loan.emiAmount },
     { header: 'Monthly Due Date', key: 'nextDueDate', render: loan => dateText(loan.nextDueDate), exportValue: loan => dateText(loan.nextDueDate) },
-    { header: 'Status', key: 'status', render: loan => loan.status },
+    { header: 'Payment Status', key: 'paymentStatus', render: loan => (
+      <select value={loan.paymentStatus || 'Due'} onChange={e => updatePaymentStatus(loan, e.target.value)} style={{ ...fieldStyle, minWidth: '120px', fontWeight: 800 }}>
+        <option value="Due">Due</option>
+        <option value="Paid">Paid</option>
+        <option value="Part Paid">Part Paid</option>
+        <option value="Overdue">Overdue</option>
+        <option value="Skipped">Skipped</option>
+      </select>
+    ), exportValue: loan => loan.paymentStatus || 'Due' },
+    { header: 'Loan Status', key: 'status', render: loan => loan.status },
     { header: 'Actions', key: 'actions', render: loan => (
       <div style={{ display: 'flex', gap: '10px' }}>
         <button type="button" onClick={() => editLoan(loan)} style={{ color: '#2563eb', border: 0, background: 'none', cursor: 'pointer', fontWeight: 800 }}>Edit</button>
@@ -115,6 +148,10 @@ export default function LoanTracking() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '14px' }}>
           <Field label="Loan Number"><input value={formData.loanNo} onChange={e => setField('loanNo', e.target.value)} style={fieldStyle} /></Field>
           <Field label="Bank / Finance"><input value={formData.lenderName} onChange={e => setField('lenderName', e.target.value)} required style={fieldStyle} /></Field>
+          <Field label="Provider Bank Name"><input value={formData.lenderBankName} onChange={e => setField('lenderBankName', e.target.value)} style={fieldStyle} /></Field>
+          <Field label="Provider Account No"><input value={formData.lenderAccountNo} onChange={e => setField('lenderAccountNo', e.target.value)} style={fieldStyle} /></Field>
+          <Field label="Provider IFSC"><input value={formData.lenderIfscCode} onChange={e => setField('lenderIfscCode', e.target.value)} style={fieldStyle} /></Field>
+          <Field label="Provider Branch"><input value={formData.lenderBranch} onChange={e => setField('lenderBranch', e.target.value)} style={fieldStyle} /></Field>
           <Field label="Finance Ledger">
             <select value={formData.financeAccountId} onChange={e => setField('financeAccountId', e.target.value)} style={fieldStyle}>
               <option value="">Optional ledger</option>
@@ -131,6 +168,15 @@ export default function LoanTracking() {
           <Field label="Outstanding Amount"><input type="number" step="any" value={formData.outstandingAmount} onChange={e => setField('outstandingAmount', e.target.value)} required style={fieldStyle} /></Field>
           <Field label="EMI / Due Amount"><input type="number" step="any" value={formData.emiAmount} onChange={e => setField('emiAmount', e.target.value)} required style={fieldStyle} /></Field>
           <Field label="Monthly Due Date"><input type="date" value={formData.nextDueDate} onChange={e => setField('nextDueDate', e.target.value)} required style={fieldStyle} /></Field>
+          <Field label="Payment Status">
+            <select value={formData.paymentStatus} onChange={e => setField('paymentStatus', e.target.value)} style={fieldStyle}>
+              <option value="Due">Due</option>
+              <option value="Paid">Paid</option>
+              <option value="Part Paid">Part Paid</option>
+              <option value="Overdue">Overdue</option>
+              <option value="Skipped">Skipped</option>
+            </select>
+          </Field>
           <Field label="Start Date"><input type="date" value={formData.startDate} onChange={e => setField('startDate', e.target.value)} style={fieldStyle} /></Field>
           <Field label="End Date"><input type="date" value={formData.endDate} onChange={e => setField('endDate', e.target.value)} style={fieldStyle} /></Field>
           <Field label="Status">

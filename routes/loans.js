@@ -13,6 +13,11 @@ function loanPayload(req, d) {
         tenantKey: req.tenantKey,
         loanNo: text(d.loanNo, null) || null,
         lenderName,
+        lenderBankName: text(d.lenderBankName, null) || null,
+        lenderAccountNo: text(d.lenderAccountNo, null) || null,
+        lenderIfscCode: text(d.lenderIfscCode, null) || null,
+        lenderBranch: text(d.lenderBranch, null) || null,
+        paymentStatus: ['Due', 'Paid', 'Part Paid', 'Overdue', 'Skipped'].includes(d.paymentStatus) ? d.paymentStatus : 'Due',
         financeAccountId: toInt(d.financeAccountId),
         vehicleId: toInt(d.vehicleId),
         principalAmount: toNumber(d.principalAmount),
@@ -63,6 +68,30 @@ router.put('/:id', async (req, res) => {
         console.error('Loan update error:', error);
         if (error.code === 'P2002') return res.status(400).json({ error: 'Loan number already exists.' });
         res.status(400).json({ error: error.message || 'Failed to update loan.' });
+    }
+});
+
+router.patch('/:id/payment-status', async (req, res) => {
+    try {
+        const paymentStatus = ['Due', 'Paid', 'Part Paid', 'Overdue', 'Skipped'].includes(req.body.paymentStatus)
+            ? req.body.paymentStatus
+            : null;
+        if (!paymentStatus) return res.status(400).json({ error: 'Valid payment status is required.' });
+
+        const result = await prisma.loan.updateMany({
+            where: withTenant(req, { id: toRequiredInt(req.params.id, 'Loan') }),
+            data: { paymentStatus }
+        });
+        if (!result.count) return res.status(404).json({ error: 'Loan not found.' });
+
+        const loan = await prisma.loan.findFirst({
+            where: withTenant(req, { id: toRequiredInt(req.params.id, 'Loan') }),
+            include: { financeAccount: true, vehicle: true }
+        });
+        res.json(loan);
+    } catch (error) {
+        console.error('Loan payment status update error:', error);
+        res.status(400).json({ error: error.message || 'Failed to update payment status.' });
     }
 });
 

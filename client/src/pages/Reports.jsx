@@ -34,13 +34,13 @@ const Bar = ({ label, value, max, color }) => (
 export default function Reports() {
     const [activeTab, setActiveTab] = useState('summary');
     const [filters, setFilters] = useState({ clientId: '', startDate: '', endDate: '', group: 'All' });
-    const [data, setData] = useState({ trips: [], invoices: [], settlements: [], accounts: [], vehicles: [], clients: [], payments: [], loading: true });
+    const [data, setData] = useState({ trips: [], invoices: [], settlements: [], accounts: [], vehicles: [], clients: [], payments: [], loans: [], loading: true });
 
     useEffect(() => {
         const fetchAllData = async () => {
             try {
-                const [tRes, iRes, sRes, aRes, vRes, cRes, pRes] = await Promise.all([
-                    fetch('/api/trips'), fetch('/api/invoices'), fetch('/api/settlements'), fetch('/api/ledger/accounts'), fetch('/api/vehicles'), fetch('/api/companies'), fetch('/api/payments')
+                const [tRes, iRes, sRes, aRes, vRes, cRes, pRes, lRes] = await Promise.all([
+                    fetch('/api/trips'), fetch('/api/invoices'), fetch('/api/settlements'), fetch('/api/ledger/accounts'), fetch('/api/vehicles'), fetch('/api/companies'), fetch('/api/payments'), fetch('/api/loans')
                 ]);
                 setData({
                     trips: tRes.ok ? await tRes.json() : [],
@@ -50,6 +50,7 @@ export default function Reports() {
                     vehicles: vRes.ok ? await vRes.json() : [],
                     clients: cRes.ok ? await cRes.json() : [],
                     payments: pRes.ok ? await pRes.json() : [],
+                    loans: lRes.ok ? await lRes.json() : [],
                     loading: false
                 });
             } catch (error) {
@@ -75,6 +76,11 @@ export default function Reports() {
     }), [data.invoices, filters]);
 
     const filteredAccounts = data.accounts.filter(a => filters.group === 'All' || a.accountGroup?.includes(filters.group));
+    const filteredLoans = useMemo(() => data.loans.filter(loan => {
+        if (filters.startDate && new Date(loan.nextDueDate) < new Date(filters.startDate)) return false;
+        if (filters.endDate && new Date(loan.nextDueDate) > new Date(filters.endDate)) return false;
+        return true;
+    }), [data.loans, filters]);
     const incomeAccounts = data.accounts.filter(a => a.accountType === 'Income');
     const expenseAccounts = data.accounts.filter(a => a.accountType === 'Expense');
     const debtorAccounts = data.accounts.filter(a => a.accountGroup?.includes('Sundry Debtors'));
@@ -86,6 +92,11 @@ export default function Reports() {
     const payables = creditorAccounts.reduce((sum, a) => sum + Math.max(0, Number(a.currentBalance || 0)), 0);
     const taxPayable = data.accounts.filter(a => a.accountGroup === 'Duties & Taxes').reduce((sum, a) => sum + Math.max(0, Number(a.currentBalance || 0)), 0);
     const dieselControl = data.accounts.filter(a => a.accountGroup?.includes('Diesel')).reduce((sum, a) => sum + Math.abs(Number(a.currentBalance || 0)), 0);
+    const activeLoans = data.loans.filter(loan => loan.status === 'Active');
+    const loanPrincipal = activeLoans.reduce((sum, loan) => sum + Number(loan.principalAmount || 0), 0);
+    const loanOutstanding = activeLoans.reduce((sum, loan) => sum + Number(loan.outstandingAmount || 0), 0);
+    const loanMonthlyEmi = activeLoans.reduce((sum, loan) => sum + Number(loan.emiAmount || 0), 0);
+    const dueLoans = activeLoans.filter(loan => loan.paymentStatus !== 'Paid');
     const invoiced = filteredInvoices.reduce((sum, inv) => sum + Number(inv.grandTotal || 0), 0);
     const collected = filteredInvoices.reduce((sum, inv) => sum + Number(inv.totalPaid || 0), 0);
     const unbilled = filteredTrips.filter(t => !t.invoiceId).reduce((sum, t) => sum + Number(t.totalClientBill || 0), 0);
@@ -176,12 +187,26 @@ export default function Reports() {
         { header: 'Invoiced', key: 'invoiced', render: c => money(c.invoiced), exportValue: c => c.invoiced },
         { header: 'Outstanding', key: 'outstanding', render: c => <strong>{money(c.outstanding)}</strong>, exportValue: c => c.outstanding }
     ];
+    const loanCols = [
+        { header: 'Loan No', key: 'loanNo', render: loan => <strong>{loan.loanNo || '-'}</strong>, exportValue: loan => loan.loanNo || '' },
+        { header: 'Bank / Finance', key: 'lenderName', render: loan => loan.lenderName, exportValue: loan => loan.lenderName },
+        { header: 'Provider Bank', key: 'lenderBankName', render: loan => loan.lenderBankName || '-', exportValue: loan => loan.lenderBankName || '' },
+        { header: 'Account No', key: 'lenderAccountNo', render: loan => loan.lenderAccountNo || '-', exportValue: loan => loan.lenderAccountNo || '' },
+        { header: 'IFSC', key: 'lenderIfscCode', render: loan => loan.lenderIfscCode || '-', exportValue: loan => loan.lenderIfscCode || '' },
+        { header: 'Vehicle', key: 'vehicle.regNo', render: loan => loan.vehicle?.regNo || '-', exportValue: loan => loan.vehicle?.regNo || '' },
+        { header: 'Loan Amount', key: 'principalAmount', render: loan => money(loan.principalAmount), exportValue: loan => loan.principalAmount },
+        { header: 'Outstanding', key: 'outstandingAmount', render: loan => <strong>{money(loan.outstandingAmount)}</strong>, exportValue: loan => loan.outstandingAmount },
+        { header: 'EMI', key: 'emiAmount', render: loan => money(loan.emiAmount), exportValue: loan => loan.emiAmount },
+        { header: 'Monthly Due Date', key: 'nextDueDate', render: loan => dateText(loan.nextDueDate), exportValue: loan => dateText(loan.nextDueDate) },
+        { header: 'Payment Status', key: 'paymentStatus', render: loan => loan.paymentStatus || 'Due', exportValue: loan => loan.paymentStatus || 'Due' },
+        { header: 'Loan Status', key: 'status', render: loan => loan.status, exportValue: loan => loan.status }
+    ];
 
     return (
         <div style={{ padding: '22px', maxWidth: '1500px', margin: '0 auto', background: '#f8fafc', minHeight: '100vh' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: '16px', alignItems: 'center', marginBottom: '18px', flexWrap: 'wrap' }}>
                 <div><h2 style={{ margin: 0, color: '#0f172a' }}>Reports Dashboard</h2><p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '13px' }}>Ledger-backed finance, collections, trip margin, diesel mapping, and account audit.</p></div>
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>{['summary', 'trips', 'invoices', 'clients', 'accounts'].map(tab => <button key={tab} onClick={() => setActiveTab(tab)} style={{ padding: '9px 14px', border: 0, borderRadius: '6px', cursor: 'pointer', fontWeight: 800, background: activeTab === tab ? '#0f172a' : 'white', color: activeTab === tab ? 'white' : '#475569' }}>{tab[0].toUpperCase() + tab.slice(1)}</button>)}</div>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>{['summary', 'trips', 'invoices', 'clients', 'loans', 'accounts'].map(tab => <button key={tab} onClick={() => setActiveTab(tab)} style={{ padding: '9px 14px', border: 0, borderRadius: '6px', cursor: 'pointer', fontWeight: 800, background: activeTab === tab ? '#0f172a' : 'white', color: activeTab === tab ? 'white' : '#475569' }}>{tab[0].toUpperCase() + tab.slice(1)}</button>)}</div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '12px', marginBottom: '18px' }}>
                 <select value={filters.clientId} onChange={e => setFilters({ ...filters, clientId: e.target.value })} style={{ padding: '10px', border: '1px solid #cbd5e1', borderRadius: '6px' }}><option value="">All clients</option>{data.clients.map(c => <option key={c.id} value={c.id}>{c.companyName}</option>)}</select>
@@ -189,10 +214,11 @@ export default function Reports() {
                 <input type="date" value={filters.endDate} onChange={e => setFilters({ ...filters, endDate: e.target.value })} style={{ padding: '10px', border: '1px solid #cbd5e1', borderRadius: '6px' }} />
                 <button onClick={() => setFilters({ clientId: '', startDate: '', endDate: '', group: 'All' })} style={{ padding: '10px', border: '1px solid #cbd5e1', borderRadius: '6px', background: 'white', cursor: 'pointer', fontWeight: 800 }}>Clear</button>
             </div>
-            {activeTab === 'summary' && <><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '14px', marginBottom: '18px' }}><StatCard label="Ledger Revenue" value={money(revenue)} tone="#2563eb" sub="Income ledger balance" /><StatCard label="Ledger Expenses" value={money(expenses)} tone="#dc2626" sub="Expense ledger balance" /><StatCard label="Gross Profit" value={money(grossProfit)} tone={grossProfit >= 0 ? '#0f766e' : '#dc2626'} sub={`Margin ${pct(margin)}`} /><StatCard label="Receivables" value={money(receivables)} tone="#b45309" sub="Open client ledger balance" /><StatCard label="Payables" value={money(payables)} tone="#7c3aed" sub="Vendor and pump creditors" /><StatCard label="Diesel Control" value={money(dieselControl)} tone="#0f766e" sub="Client/vendor diesel subledgers" /><StatCard label="Output Tax" value={money(taxPayable)} tone="#475569" sub="Duties & Taxes" /></div><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '16px' }}><Section title="Collections Snapshot"><Bar label="Invoiced" value={invoiced} max={Math.max(invoiced, collected, 1)} color="#2563eb" /><Bar label="Collected incl. advances" value={collected} max={Math.max(invoiced, collected, 1)} color="#0f766e" /><Bar label="Unbilled trips" value={unbilled} max={Math.max(invoiced, unbilled, 1)} color="#b45309" /></Section><Section title="Receivable Aging">{Object.entries(aging).map(([label, value]) => <Bar key={label} label={label} value={value} max={agingMax} color={label === '90+' ? '#dc2626' : '#0f766e'} />)}</Section><Section title="Top Client Outstanding">{clientRows.slice(0, 5).map(c => <Bar key={c.id} label={c.name} value={c.outstanding} max={Math.max(clientRows[0]?.outstanding || 1, 1)} color="#7c3aed" />)}</Section></div></>}
+            {activeTab === 'summary' && <><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '14px', marginBottom: '18px' }}><StatCard label="Ledger Revenue" value={money(revenue)} tone="#2563eb" sub="Income ledger balance" /><StatCard label="Ledger Expenses" value={money(expenses)} tone="#dc2626" sub="Expense ledger balance" /><StatCard label="Gross Profit" value={money(grossProfit)} tone={grossProfit >= 0 ? '#0f766e' : '#dc2626'} sub={`Margin ${pct(margin)}`} /><StatCard label="Receivables" value={money(receivables)} tone="#b45309" sub="Open client ledger balance" /><StatCard label="Payables" value={money(payables)} tone="#7c3aed" sub="Vendor and pump creditors" /><StatCard label="Loan Outstanding" value={money(loanOutstanding)} tone="#9333ea" sub={`${dueLoans.length} loans not marked paid`} /><StatCard label="Monthly EMI" value={money(loanMonthlyEmi)} tone="#0f766e" sub="Active loan cash outflow" /><StatCard label="Diesel Control" value={money(dieselControl)} tone="#0f766e" sub="Client/vendor diesel subledgers" /><StatCard label="Output Tax" value={money(taxPayable)} tone="#475569" sub="Duties & Taxes" /></div><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '16px' }}><Section title="Collections Snapshot"><Bar label="Invoiced" value={invoiced} max={Math.max(invoiced, collected, 1)} color="#2563eb" /><Bar label="Collected incl. advances" value={collected} max={Math.max(invoiced, collected, 1)} color="#0f766e" /><Bar label="Unbilled trips" value={unbilled} max={Math.max(invoiced, unbilled, 1)} color="#b45309" /></Section><Section title="Loan Snapshot"><Bar label="Principal" value={loanPrincipal} max={Math.max(loanPrincipal, loanOutstanding, 1)} color="#7c3aed" /><Bar label="Outstanding" value={loanOutstanding} max={Math.max(loanPrincipal, loanOutstanding, 1)} color="#b45309" /><Bar label="Monthly EMI" value={loanMonthlyEmi} max={Math.max(loanPrincipal, loanMonthlyEmi, 1)} color="#0f766e" /></Section><Section title="Receivable Aging">{Object.entries(aging).map(([label, value]) => <Bar key={label} label={label} value={value} max={agingMax} color={label === '90+' ? '#dc2626' : '#0f766e'} />)}</Section><Section title="Top Client Outstanding">{clientRows.slice(0, 5).map(c => <Bar key={c.id} label={c.name} value={c.outstanding} max={Math.max(clientRows[0]?.outstanding || 1, 1)} color="#7c3aed" />)}</Section></div></>}
             {activeTab === 'trips' && <><ExportButtons rows={tripRows} columns={tripCols} title="Trip_Margin_Report" /><DataTable data={tripRows} columns={tripCols} title="Trip Profitability" enableColumnFilters /></>}
             {activeTab === 'invoices' && <><ExportButtons rows={filteredInvoices} columns={invoiceCols} title="Invoice_Collections_Report" /><DataTable data={filteredInvoices} columns={invoiceCols} title="Invoice Collections" enableColumnFilters /></>}
             {activeTab === 'clients' && <><ExportButtons rows={clientRows} columns={clientCols} title="Client_Performance_Report" /><DataTable data={clientRows} columns={clientCols} title="Client Performance" enableColumnFilters /></>}
+            {activeTab === 'loans' && <><ExportButtons rows={filteredLoans} columns={loanCols} title="Loan_Tracking_Report" /><DataTable data={filteredLoans} columns={loanCols} title="Loan Tracking" enableColumnFilters /></>}
             {activeTab === 'accounts' && <><div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}><select value={filters.group} onChange={e => setFilters({ ...filters, group: e.target.value })}><option value="All">All groups</option><option value="Sundry Debtors">Sundry Debtors</option><option value="Sundry Creditors">Sundry Creditors</option><option value="Cash/Bank">Cash/Bank</option><option value="Direct Income">Income</option><option value="Expense">Expense</option><option value="Duties & Taxes">Duties & Taxes</option><option value="Client Diesel">Client Diesel</option><option value="Vendor Diesel">Vendor Diesel</option></select></div><ExportButtons rows={filteredAccounts} columns={accountCols} title="Ledger_Audit_Report" /><DataTable data={filteredAccounts} columns={accountCols} title="Ledger Account Audit" enableColumnFilters /></>}
         </div>
     );
