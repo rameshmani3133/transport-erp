@@ -288,7 +288,8 @@ export default function Billing() {
 
   const handleExportPDF = async (invoice) => {
     const invoiceTrips = invoice.trips || [];
-    if (!invoiceTrips.length) return alert('No invoice trips to print.');
+    const isStandaloneTaxInvoice = ['IOCL INVOICE', 'LPG Bill'].includes(invoice.invoiceFormat);
+    if (!isStandaloneTaxInvoice && !invoiceTrips.length) return alert('No invoice trips to print.');
 
     const printWindow = window.open('', '_blank');
     if (!printWindow) return alert('Please allow popups to export this invoice.');
@@ -315,7 +316,7 @@ export default function Billing() {
     const vendorCode = invoice.vendorCode || invoice.location?.company?.vendorCode || '';
     const poMigo = invoice.poMigo || '';
     const statusRow = invoice.showStatus ? `<div class="meta-row"><strong>Status</strong><span>${escapeHtml(invoice.status || '-')}</span></div>` : '';
-    if (['IOCL INVOICE', 'LPG Bill'].includes(invoice.invoiceFormat)) {
+    if (isStandaloneTaxInvoice) {
       const gstLabel = invoice.gstType === 'CGST_SGST' ? 'CGST + SGST' : 'IGST';
       const supplierStateCode = String(profile.gstNumber || '').slice(0, 2) || '-';
       const receiverStateCode = String(invoice.location?.gstNumber || '').slice(0, 2) || '-';
