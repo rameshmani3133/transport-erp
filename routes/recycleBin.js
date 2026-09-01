@@ -1,12 +1,10 @@
 const express = require('express');
 const { PrismaClient } = require('@prisma/client');
-const { requireSuperAdmin } = require('../lib/security');
+const { isSuperAdmin } = require('../lib/security');
 const { toRequiredInt } = require('../lib/coerce');
 
 const router = express.Router();
 const prisma = new PrismaClient();
-
-router.use(requireSuperAdmin);
 
 const resources = {
   accounts: {
@@ -60,7 +58,7 @@ const resources = {
     title: row => row.loanNo || row.lenderName,
   },
   companyProfiles: {
-    model: 'myCompanyProfile', label: 'Company Profiles', tenantScoped: false,
+    model: 'myCompanyProfile', label: 'Company Profiles', tenantScoped: false, superAdminOnly: true,
     select: { id: true, tenantKey: true, deletedAt: true, companyName: true, gstNumber: true, panNumber: true },
     title: row => row.companyName,
   },
@@ -75,12 +73,12 @@ const resources = {
     title: row => row.tripNo,
   },
   users: {
-    model: 'user', label: 'Users', tenantScoped: false,
+    model: 'user', label: 'Users', tenantScoped: false, superAdminOnly: true,
     select: { id: true, deletedAt: true, name: true, email: true, role: true, status: true },
     title: row => row.name || row.email,
   },
   userCompanyAccess: {
-    model: 'userCompanyAccess', label: 'User Company Access', tenantScoped: false,
+    model: 'userCompanyAccess', label: 'User Company Access', tenantScoped: false, superAdminOnly: true,
     select: { id: true, deletedAt: true, userId: true, tenantKey: true, createdAt: true },
     title: row => `User #${row.userId} - ${row.tenantKey}`,
   },
@@ -96,9 +94,9 @@ const resources = {
   },
 };
 
-function resourceFor(type) {
+function resourceFor(type, req) {
   const resource = resources[type];
-  if (!resource) {
+  if (!resource || (resource.superAdminOnly && !isSuperAdmin(req.user))) {
     const error = new Error('Unsupported recycle-bin record type.');
     error.status = 404;
     throw error;
@@ -114,13 +112,17 @@ function deletedWhere(resource, req, id) {
 }
 
 router.get('/types', (req, res) => {
-  res.json(Object.entries(resources).map(([key, value]) => ({ key, label: value.label })));
+  res.json(Object.entries(resources)
+    .filter(([, value]) => !value.superAdminOnly || isSuperAdmin(req.user))
+    .map(([key, value]) => ({ key, label: value.label })));
 });
 
 router.get('/', async (req, res) => {
   try {
     const requestedType = String(req.query.type || 'all');
-    const entries = requestedType === 'all' ? Object.entries(resources) : [[requestedType, resourceFor(requestedType)]];
+    const entries = requestedType === 'all'
+      ? Object.entries(resources).filter(([, value]) => !value.superAdminOnly || isSuperAdmin(req.user))
+      : [[requestedType, resourceFor(requestedType, req)]];
     const groups = await Promise.all(entries.map(async ([type, resource]) => {
       const rows = await prisma[resource.model].findMany({
         where: deletedWhere(resource, req),
@@ -167,7 +169,7 @@ async function restoreRecord(tx, type, resource, record) {
 router.patch('/:type/:id/restore', async (req, res) => {
   try {
     const type = req.params.type;
-    const resource = resourceFor(type);
+    const resource = resourceFor(type, req);
     const id = toRequiredInt(req.params.id, 'Recycle-bin record');
     const record = await prisma[resource.model].findFirst({ where: deletedWhere(resource, req, id), select: resource.select });
     if (!record) return res.status(404).json({ error: 'Deleted record not found.' });
@@ -189,13 +191,17 @@ async function permanentlyDeleteRecord(tx, type, resource, record, currentUserId
   if (type === 'companyProfiles') {
     await tx.userCompanyAccess.deleteMany({ where: { tenantKey: record.tenantKey, deletedAt: { not: null } } });
   }
+  if (type === 'invoices') {
+    await tx.ledgerEntry.deleteMany({ where: { tenantKey: record.tenantKey, invoiceId: id, deletedAt: { not: null } } });
+    await tx.invoicePayment.deleteMany({ where: { tenantKey: record.tenantKey, invoiceId: id, deletedAt: { not: null } } });
+  }
   return tx[resource.model].delete({ where: { id } });
 }
 
 router.delete('/:type/:id/permanent', async (req, res) => {
   try {
     const type = req.params.type;
-    const resource = resourceFor(type);
+    const resource = resourceFor(type, req);
     const id = toRequiredInt(req.params.id, 'Recycle-bin record');
     const record = await prisma[resource.model].findFirst({ where: deletedWhere(resource, req, id), select: resource.select });
     if (!record) return res.status(404).json({ error: 'Deleted record not found.' });

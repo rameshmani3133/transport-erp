@@ -190,7 +190,7 @@ export default function LedgerDashboard() {
                 </div>
             </form>
 
-            <DataTable data={accounts} columns={accountColumns} title="Chart of Accounts Balances" />
+            <DataTable data={accounts} columns={accountColumns} title="Chart of Accounts Balances" recycleBinType="accounts" onRecycleChanged={fetchAccounts} />
 
             {selectedAccount && (
                 <div style={{ marginTop: '28px', background: 'white', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '18px', boxShadow: '0 8px 24px rgba(15,23,42,0.06)' }}>
@@ -203,7 +203,7 @@ export default function LedgerDashboard() {
                         <input type="date" value={filterEndDate} onChange={e => setFilterEndDate(e.target.value)} />
                         <select value={filterType} onChange={e => setFilterType(e.target.value)}><option value="All">All</option><option value="Dr">Dr only</option><option value="Cr">Cr only</option></select>
                     </div>
-                    <DataTable data={filteredTransactions} columns={txnColumns} />
+                    <DataTable data={filteredTransactions} columns={txnColumns} recycleBinType="ledgerEntries" />
                 </div>
             )}
         </div>

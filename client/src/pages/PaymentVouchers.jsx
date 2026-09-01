@@ -152,8 +152,7 @@ export default function PaymentVouchers() {
           <button type="submit" style={{ padding: '11px 18px', background: '#0f766e', color: 'white', border: 0, borderRadius: '6px', fontWeight: 800, cursor: 'pointer' }}>Post Voucher</button>
         </div>
       </form>
-      <DataTable data={vouchers} columns={columns} title="Payment Voucher History" />
+      <DataTable data={vouchers} columns={columns} title="Payment Voucher History" recycleBinType="ledgerEntries" onRecycleChanged={fetchData} />
     </div>
   );
 }
-

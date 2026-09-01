@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
+import TableRecycleBin from './TableRecycleBin';
 
 // Sort Icons
 const Icons = {
@@ -8,11 +9,12 @@ const Icons = {
     Sort: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>
 };
 
-export default function DataTable({ data, columns, title = "Records", enableColumnFilters = false, onFilteredDataChange }) {
+export default function DataTable({ data, columns, title = "Records", enableColumnFilters = false, onFilteredDataChange, recycleBinType, onRecycleChanged }) {
     const [search, setSearch] = useState('');
     const [columnFilters, setColumnFilters] = useState({});
     const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
     const [currentPage, setCurrentPage] = useState(1);
+    const [recycleOpen, setRecycleOpen] = useState(false);
     const rowsPerPage = 10;
 
     // Helper to get nested object values (e.g., 'company.companyName')
@@ -105,6 +107,11 @@ export default function DataTable({ data, columns, title = "Records", enableColu
             <div style={{ padding: '20px', backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
                 <h3 style={{ margin: 0, color: '#334155' }}>{title} ({processedData.length})</h3>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                    {recycleBinType && (
+                        <button type="button" onClick={() => setRecycleOpen(true)} style={{ padding: '8px 10px', border: '1px solid #dc2626', borderRadius: '6px', background: 'white', color: '#dc2626', cursor: 'pointer', fontWeight: 700 }}>
+                            Recycle Bin
+                        </button>
+                    )}
                     {enableColumnFilters && hasColumnFilters && (
                         <button type="button" onClick={clearColumnFilters} style={{ padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: '6px', background: 'white', color: '#475569', cursor: 'pointer', fontWeight: 700 }}>
                             Clear filters
@@ -187,6 +194,7 @@ export default function DataTable({ data, columns, title = "Records", enableColu
                     <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} style={{ padding: '6px 12px', border: '1px solid #cbd5e1', borderRadius: '4px', backgroundColor: currentPage === totalPages ? '#f1f5f9' : 'white', cursor: currentPage === totalPages ? 'not-allowed' : 'pointer' }}>Next</button>
                 </div>
             </div>
+            {recycleOpen && <TableRecycleBin type={recycleBinType} title={title} onClose={() => setRecycleOpen(false)} onChanged={onRecycleChanged} />}
         </div>
     );
 }

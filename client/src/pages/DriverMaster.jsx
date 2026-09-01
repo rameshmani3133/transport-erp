@@ -106,7 +106,7 @@ const initialState = {
               {editId ? 'Update Driver' : 'Save Driver'}
           </button>
       </form>
-      <DataTable data={drivers} columns={columns} />
+      <DataTable data={drivers} columns={columns} recycleBinType="drivers" onRecycleChanged={fetchData} />
     </div>
   );
 }
