@@ -130,7 +130,7 @@ router.get('/', async (req, res) => {
         orderBy: { deletedAt: 'desc' },
         take: 200,
       });
-      return rows.map(row => ({ type, typeLabel: resource.label, title: resource.title(row), ...row }));
+      return rows.map(row => ({ ...row, resourceType: type, type, typeLabel: resource.label, title: resource.title(row) }));
     }));
     res.json(groups.flat().sort((a, b) => new Date(b.deletedAt) - new Date(a.deletedAt)));
   } catch (error) {
