@@ -62,8 +62,8 @@ function LoginScreen({ onLogin }) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Login failed.');
-      setAuthSession(data.token, data.user);
-      onLogin(data.user);
+      const nextTenant = setAuthSession(data.token, data.user);
+      onLogin(data.user, nextTenant);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -91,6 +91,8 @@ export default function App() {
   const [authReady, setAuthReady] = useState(false);
   const [tenant, setTenant] = useState(getTenantKey());
   const [profiles, setProfiles] = useState([]);
+  const [profilesReady, setProfilesReady] = useState(false);
+  const [profileError, setProfileError] = useState('');
   const isSuperAdmin = user?.role === 'SUPERADMIN';
 
   useEffect(() => {
@@ -121,7 +123,11 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const logoutExpired = () => setUser(null);
+    const logoutExpired = () => {
+      setUser(null);
+      setProfiles([]);
+      setProfilesReady(false);
+    };
     window.addEventListener('auth-expired', logoutExpired);
     return () => window.removeEventListener('auth-expired', logoutExpired);
   }, []);
@@ -136,26 +142,50 @@ export default function App() {
     const list = dedupeProfiles(data);
     setProfiles(list);
     const allowedKeys = list.map(item => item.tenantKey);
-    if (allowedKeys.length && !allowedKeys.includes(tenant)) {
-      const nextTenant = setTenantKey(allowedKeys[0]);
+    const storedTenant = getTenantKey();
+    const nextTenant = allowedKeys.includes(storedTenant) ? storedTenant : allowedKeys[0];
+    if (nextTenant) {
+      if (nextTenant !== storedTenant) setTenantKey(nextTenant);
       setTenant(nextTenant);
     }
+    return list;
   };
 
   useEffect(() => {
     if (!user) return;
-    loadProfiles().catch(() => setProfiles([]));
-  }, [user, tenant]);
+    let active = true;
+    setProfilesReady(false);
+    setProfileError('');
+    loadProfiles()
+      .catch(error => {
+        if (!active) return;
+        setProfiles([]);
+        setProfileError(error.message || 'Failed to load assigned companies.');
+      })
+      .finally(() => { if (active) setProfilesReady(true); });
+    return () => { active = false; };
+  }, [user?.id]);
 
   const handleTenantChange = (value) => {
+    if (!profiles.some(profile => profile.tenantKey === value)) return;
     const nextTenant = setTenantKey(value);
     setTenant(nextTenant);
-    window.location.reload();
+  };
+
+  const handleLogin = (nextUser, nextTenant) => {
+    setProfiles([]);
+    setProfilesReady(false);
+    setProfileError('');
+    setTenant(nextTenant || getTenantKey());
+    setUser(nextUser);
   };
 
   const logout = () => {
     clearAuthSession();
     setUser(null);
+    setProfiles([]);
+    setProfilesReady(false);
+    setProfileError('');
   };
 
   if (!authReady) {
@@ -169,7 +199,31 @@ export default function App() {
     );
   }
 
-  if (!user) return <LoginScreen onLogin={setUser} />;
+  if (!user) return <LoginScreen onLogin={handleLogin} />;
+
+  if (!profilesReady) {
+    return (
+      <div className="login-shell">
+        <div className="login-panel">
+          <h1>Logistics ERP</h1>
+          <div className="status-banner">Loading assigned companies...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (profileError || !profiles.length) {
+    return (
+      <div className="login-shell">
+        <div className="login-panel">
+          <h1>Logistics ERP</h1>
+          <div className="login-error">{profileError || 'No active company is available for this account.'}</div>
+          <button className="primary-btn" onClick={() => { setProfilesReady(false); setProfileError(''); loadProfiles().then(() => { setProfileError(''); setProfilesReady(true); }).catch(error => { setProfileError(error.message); setProfilesReady(true); }); }}>Retry</button>
+          <button type="button" onClick={logout}>Logout</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="app-shell">
@@ -230,7 +284,7 @@ export default function App() {
       </nav>
 
       <main className="main-content">
-        <Routes>
+        <Routes key={tenant}>
           <Route path="/" element={<Reports />} />
           <Route path="/trips" element={<TripManagement />} />
           <Route path="/diesel" element={<DieselManagement />} />

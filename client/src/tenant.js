@@ -20,8 +20,12 @@ export function getAuthToken() {
 export function setAuthSession(token, user) {
     localStorage.setItem('authToken', token);
     localStorage.setItem('authUser', JSON.stringify(user));
-    const company = user?.companies?.[0] || 'default';
-    setTenantKey(company);
+    const currentTenant = getTenantKey();
+    const companies = Array.isArray(user?.companies) ? user.companies.map(normalizeTenantKey) : [];
+    const company = user?.role === 'SUPERADMIN' || companies.includes(currentTenant)
+        ? currentTenant
+        : companies[0] || 'default';
+    return setTenantKey(company);
 }
 
 export function getAuthUser() {
