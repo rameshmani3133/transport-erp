@@ -57,6 +57,11 @@ const resources = {
     select: { id: true, tenantKey: true, deletedAt: true, loanNo: true, lenderName: true, outstandingAmount: true, status: true },
     title: row => row.loanNo || row.lenderName,
   },
+  recurringBills: {
+    model: 'recurringBill', label: 'Monthly Bills', tenantScoped: true,
+    select: { id: true, tenantKey: true, deletedAt: true, category: true, billName: true, providerName: true, amount: true, nextDueDate: true, status: true },
+    title: row => row.billName,
+  },
   companyProfiles: {
     model: 'myCompanyProfile', label: 'Company Profiles', tenantScoped: false, superAdminOnly: true,
     select: { id: true, tenantKey: true, deletedAt: true, companyName: true, gstNumber: true, panNumber: true },
@@ -130,7 +135,7 @@ router.get('/', async (req, res) => {
         orderBy: { deletedAt: 'desc' },
         take: 200,
       });
-      return rows.map(row => ({ ...row, resourceType: type, type, typeLabel: resource.label, title: resource.title(row) }));
+      return rows.map(row => ({ type, typeLabel: resource.label, title: resource.title(row), ...row }));
     }));
     res.json(groups.flat().sort((a, b) => new Date(b.deletedAt) - new Date(a.deletedAt)));
   } catch (error) {
@@ -163,6 +168,9 @@ async function restoreRecord(tx, type, resource, record) {
   if (type === 'vendorSettlements') {
     await tx.ledgerEntry.updateMany({ where: { tenantKey: record.tenantKey, settlementId: id, deletedAt: { not: null } }, data: { deletedAt: null } });
   }
+  if (type === 'recurringBills') {
+    await tx.recurringBillPayment.updateMany({ where: { tenantKey: record.tenantKey, recurringBillId: id, deletedAt: { not: null } }, data: { deletedAt: null } });
+  }
   return tx[resource.model].update({ where: { id }, data: { deletedAt: null } });
 }
 
@@ -194,6 +202,9 @@ async function permanentlyDeleteRecord(tx, type, resource, record, currentUserId
   if (type === 'invoices') {
     await tx.ledgerEntry.deleteMany({ where: { tenantKey: record.tenantKey, invoiceId: id, deletedAt: { not: null } } });
     await tx.invoicePayment.deleteMany({ where: { tenantKey: record.tenantKey, invoiceId: id, deletedAt: { not: null } } });
+  }
+  if (type === 'recurringBills') {
+    await tx.recurringBillPayment.deleteMany({ where: { tenantKey: record.tenantKey, recurringBillId: id } });
   }
   return tx[resource.model].delete({ where: { id } });
 }

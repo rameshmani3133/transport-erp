@@ -146,7 +146,7 @@ export default function Reminders() {
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '18px' }}>
         <div>
           <h2 style={{ margin: 0, color: '#0f172a' }}>Reminders</h2>
-          <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '13px' }}>Driver, truck compliance, and loan due reminders.</p>
+          <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '13px' }}>Driver, truck compliance, loan, and monthly bill reminders.</p>
         </div>
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
           <button onClick={() => setEmailModalOpen(true)} style={{ padding: '9px 14px', border: '1px solid #cbd5e1', borderRadius: '6px', background: 'white', color: '#0f172a', cursor: 'pointer', fontWeight: 800 }}>Manage Mail IDs</button>
@@ -168,6 +168,7 @@ export default function Reminders() {
           <option value="Driver">Driver</option>
           <option value="Truck">Truck</option>
           <option value="Loan">Loan</option>
+          <option value="Monthly Bill">Monthly Bill</option>
         </select>
         <select value={status} onChange={e => setStatus(e.target.value)} style={{ padding: '9px', border: '1px solid #cbd5e1', borderRadius: '6px' }}>
           <option value="Actionable">Overdue + Due Soon</option>

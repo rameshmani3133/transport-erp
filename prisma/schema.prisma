@@ -159,6 +159,50 @@ model Loan {
 }
 
 // ==========================================
+// MONTHLY / RECURRING BILL TRACKING
+// ==========================================
+
+model RecurringBill {
+  id               Int       @id @default(autoincrement())
+  tenantKey        String    @default("default")
+  deletedAt        DateTime?
+  category         String
+  billName         String
+  providerName     String?
+  consumerNumber   String?
+  amount           Float
+  dueDay           Int
+  nextDueDate      DateTime
+  paymentStatus    String    @default("Due")
+  lastPaidDate     DateTime?
+  reminderEnabled  Boolean   @default(true)
+  startDate        DateTime?
+  endDate          DateTime?
+  status           String    @default("Active")
+  remarks          String?
+  payments         RecurringBillPayment[]
+
+  @@index([tenantKey, nextDueDate])
+}
+
+model RecurringBillPayment {
+  id               Int       @id @default(autoincrement())
+  tenantKey        String    @default("default")
+  deletedAt        DateTime?
+  recurringBillId  Int
+  recurringBill    RecurringBill @relation(fields: [recurringBillId], references: [id])
+  dueDate          DateTime
+  paidDate         DateTime
+  amount           Float
+  paymentMode      String?
+  referenceNumber  String?
+  remarks          String?
+  createdAt        DateTime  @default(now())
+
+  @@index([tenantKey, recurringBillId])
+}
+
+// ==========================================
 // CORE OPERATIONS: TRIP MANAGEMENT
 // ==========================================
 
@@ -542,4 +586,3 @@ model BackupRun {
   message     String?
   createdAt   DateTime  @default(now())
 }
-

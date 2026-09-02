@@ -20,6 +20,7 @@ import PaymentVouchers from './pages/PaymentVouchers';
 import AdminUsers from './pages/AdminUsers';
 import LoanTracking from './pages/LoanTracking';
 import Reminders from './pages/Reminders';
+import RecurringBills from './pages/RecurringBills';
 
 function profileScore(profile) {
   const isPlaceholder = String(profile.companyName || '').trim().toLowerCase() === 'default company';
@@ -208,6 +209,7 @@ export default function App() {
           <NavLink to="/payments" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Payment Vouchers</NavLink>
           <NavLink to="/ledger" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Ledger Dashboard</NavLink>
           <NavLink to="/loans" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Loan Tracking</NavLink>
+          <NavLink to="/recurring-bills" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Monthly Bills</NavLink>
         </div>
         <div className="nav-group">
           <div className="nav-group-title">Master Data</div>
@@ -237,6 +239,7 @@ export default function App() {
           <Route path="/payments" element={<PaymentVouchers />} />
           <Route path="/ledger" element={<LedgerDashboard />} />
           <Route path="/loans" element={<LoanTracking />} />
+          <Route path="/recurring-bills" element={<RecurringBills />} />
           <Route path="/reminders" element={<Reminders />} />
           <Route path="/print-invoice/:id" element={<Navigate to="/billing" replace />} />
           <Route path="/my-company" element={<MyCompanyProfile isSuperAdmin={isSuperAdmin} />} />
