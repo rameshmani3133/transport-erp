@@ -47,7 +47,7 @@ function SortableReportTable({ rows, columns, title, tableTitle, exportExcel, pr
 
 export default function Reports() {
     const [activeTab, setActiveTab] = useState('summary');
-    const [filters, setFilters] = useState({ clientId: '', startDate: '', endDate: '', group: 'All' });
+    const [filters, setFilters] = useState({ clientId: '', startDate: '', endDate: '', group: 'All', loanPaymentStatus: 'All', loanStatus: 'All' });
     const [data, setData] = useState({ trips: [], invoices: [], settlements: [], accounts: [], vehicles: [], clients: [], payments: [], loans: [], loading: true });
 
     useEffect(() => {
@@ -93,6 +93,8 @@ export default function Reports() {
     const filteredLoans = useMemo(() => data.loans.filter(loan => {
         if (filters.startDate && new Date(loan.nextDueDate) < new Date(filters.startDate)) return false;
         if (filters.endDate && new Date(loan.nextDueDate) > new Date(filters.endDate)) return false;
+        if (filters.loanPaymentStatus !== 'All' && (loan.paymentStatus || 'Due') !== filters.loanPaymentStatus) return false;
+        if (filters.loanStatus !== 'All' && loan.status !== filters.loanStatus) return false;
         return true;
     }), [data.loans, filters]);
     const incomeAccounts = data.accounts.filter(a => a.accountType === 'Income');
@@ -207,7 +209,8 @@ export default function Reports() {
         { header: 'Monthly Due Date', key: 'nextDueDate', render: loan => dateText(loan.nextDueDate), exportValue: loan => dateText(loan.nextDueDate) },
         { header: 'Paid Date', key: 'paidDate', render: loan => dateText(loan.paidDate), exportValue: loan => dateText(loan.paidDate) },
         { header: 'Payment Status', key: 'paymentStatus', render: loan => loan.paymentStatus || 'Due', exportValue: loan => loan.paymentStatus || 'Due' },
-        { header: 'Loan Status', key: 'status', render: loan => loan.status, exportValue: loan => loan.status }
+        { header: 'Loan Status', key: 'status', render: loan => loan.status, exportValue: loan => loan.status },
+        { header: 'Remarks', key: 'remarks', render: loan => loan.remarks || '-', exportValue: loan => loan.remarks || '' }
     ];
 
     return (
@@ -220,8 +223,12 @@ export default function Reports() {
                 <select value={filters.clientId} onChange={e => setFilters({ ...filters, clientId: e.target.value })} style={{ padding: '10px', border: '1px solid #cbd5e1', borderRadius: '6px' }}><option value="">All clients</option>{data.clients.map(c => <option key={c.id} value={c.id}>{c.companyName}</option>)}</select>
                 <input type="date" value={filters.startDate} onChange={e => setFilters({ ...filters, startDate: e.target.value })} style={{ padding: '10px', border: '1px solid #cbd5e1', borderRadius: '6px' }} />
                 <input type="date" value={filters.endDate} onChange={e => setFilters({ ...filters, endDate: e.target.value })} style={{ padding: '10px', border: '1px solid #cbd5e1', borderRadius: '6px' }} />
-                <button onClick={() => setFilters({ clientId: '', startDate: '', endDate: '', group: 'All' })} style={{ padding: '10px', border: '1px solid #cbd5e1', borderRadius: '6px', background: 'white', cursor: 'pointer', fontWeight: 800 }}>Clear</button>
+                <button onClick={() => setFilters({ clientId: '', startDate: '', endDate: '', group: 'All', loanPaymentStatus: 'All', loanStatus: 'All' })} style={{ padding: '10px', border: '1px solid #cbd5e1', borderRadius: '6px', background: 'white', cursor: 'pointer', fontWeight: 800 }}>Clear</button>
             </div>
+            {activeTab === 'loans' && <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', margin: '-6px 0 14px' }}>
+                <select value={filters.loanPaymentStatus} onChange={e => setFilters({ ...filters, loanPaymentStatus: e.target.value })} style={{ padding: '9px', border: '1px solid #cbd5e1', borderRadius: '6px' }}><option value="All">All payment statuses</option><option value="Due">Due</option><option value="Paid">Paid</option><option value="Part Paid">Part Paid</option><option value="Overdue">Overdue</option><option value="Skipped">Skipped</option></select>
+                <select value={filters.loanStatus} onChange={e => setFilters({ ...filters, loanStatus: e.target.value })} style={{ padding: '9px', border: '1px solid #cbd5e1', borderRadius: '6px' }}><option value="All">All loan statuses</option><option value="Active">Active</option><option value="On Hold">On Hold</option><option value="Closed">Closed</option></select>
+            </div>}
             {activeTab === 'summary' && <><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '14px', marginBottom: '18px' }}><StatCard label="Ledger Revenue" value={money(revenue)} tone="#2563eb" sub="Income ledger balance" /><StatCard label="Ledger Expenses" value={money(expenses)} tone="#dc2626" sub="Expense ledger balance" /><StatCard label="Gross Profit" value={money(grossProfit)} tone={grossProfit >= 0 ? '#0f766e' : '#dc2626'} sub={`Margin ${pct(margin)}`} /><StatCard label="Receivables" value={money(receivables)} tone="#b45309" sub="Open client ledger balance" /><StatCard label="Payables" value={money(payables)} tone="#7c3aed" sub="Vendor and pump creditors" /><StatCard label="Loan Outstanding" value={money(loanOutstanding)} tone="#9333ea" sub={`${dueLoans.length} loans not marked paid`} /><StatCard label="Monthly EMI" value={money(loanMonthlyEmi)} tone="#0f766e" sub="Active loan cash outflow" /><StatCard label="Diesel Control" value={money(dieselControl)} tone="#0f766e" sub="Client/vendor diesel subledgers" /><StatCard label="Output Tax" value={money(taxPayable)} tone="#475569" sub="Duties & Taxes" /></div><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '16px' }}><Section title="Collections Snapshot"><Bar label="Invoiced" value={invoiced} max={Math.max(invoiced, collected, 1)} color="#2563eb" /><Bar label="Collected incl. advances" value={collected} max={Math.max(invoiced, collected, 1)} color="#0f766e" /><Bar label="Unbilled trips" value={unbilled} max={Math.max(invoiced, unbilled, 1)} color="#b45309" /></Section><Section title="Loan Snapshot"><Bar label="Principal" value={loanPrincipal} max={Math.max(loanPrincipal, loanOutstanding, 1)} color="#7c3aed" /><Bar label="Outstanding" value={loanOutstanding} max={Math.max(loanPrincipal, loanOutstanding, 1)} color="#b45309" /><Bar label="Monthly EMI" value={loanMonthlyEmi} max={Math.max(loanPrincipal, loanMonthlyEmi, 1)} color="#0f766e" /></Section><Section title="Receivable Aging">{Object.entries(aging).map(([label, value]) => <Bar key={label} label={label} value={value} max={agingMax} color={label === '90+' ? '#dc2626' : '#0f766e'} />)}</Section><Section title="Top Client Outstanding">{clientRows.slice(0, 5).map(c => <Bar key={c.id} label={c.name} value={c.outstanding} max={Math.max(clientRows[0]?.outstanding || 1, 1)} color="#7c3aed" />)}</Section></div></>}
             {activeTab === 'trips' && <SortableReportTable rows={tripRows} columns={tripCols} title="Trip_Margin_Report" tableTitle="Trip Profitability" exportExcel={exportExcel} printReport={printReport} />}
             {activeTab === 'invoices' && <SortableReportTable rows={filteredInvoices} columns={invoiceCols} title="Invoice_Collections_Report" tableTitle="Invoice Collections" exportExcel={exportExcel} printReport={printReport} />}
