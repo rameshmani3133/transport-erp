@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 
-const FormGroup = ({ label, name, value, onChange, required=false }) => (
+const FormGroup = ({ label, name, value, onChange, required=false, multiline=false }) => (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
         <label style={{ fontSize: '11px', fontWeight: '600', color: '#64748b' }}>{label}</label>
-        <input type="text" name={name} value={value || ''} onChange={onChange} required={required}
-            style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize:'13px' }} />
+        {multiline
+            ? <textarea name={name} value={value || ''} onChange={onChange} required={required} rows={4} placeholder="Use a new line for each address line" style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize:'13px', resize: 'vertical' }} />
+            : <input type="text" name={name} value={value || ''} onChange={onChange} required={required} style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize:'13px' }} />}
     </div>
 );
 
@@ -118,7 +119,7 @@ export default function MyCompanyProfile({ isSuperAdmin = false }) {
                     <FormGroup label="GSTIN Number" name="gstNumber" value={formData.gstNumber} onChange={handleChange} />
                     <FormGroup label="PAN Number" name="panNumber" value={formData.panNumber} onChange={handleChange} />
                     <div style={{ gridColumn: '1 / -1' }}>
-                        <FormGroup label="Full Registered Address" name="address" value={formData.address} onChange={handleChange} />
+                        <FormGroup label="Full Registered Address" name="address" value={formData.address} onChange={handleChange} multiline />
                     </div>
                 </div>
 

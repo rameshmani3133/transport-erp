@@ -383,7 +383,7 @@ export default function Billing() {
       printWindow.document.write(`
         <html><head><title>${escapeHtml(invoice.invoiceNo)} - ${formatTitle}</title><style>
           @page { size:A4 portrait; margin:10mm } *{box-sizing:border-box} body{font-family:Arial,sans-serif;color:#111;margin:0;font-size:12px}
-          .head{display:flex;justify-content:space-between;align-items:flex-start;padding:16px 8px;border-bottom:3px double #222}.head h1{font-size:28px;letter-spacing:3px;margin:0}.addr{line-height:1.5;max-width:280px}
+          .head{display:flex;justify-content:space-between;align-items:flex-start;padding:16px 8px;border-bottom:3px double #222}.head h1{font-size:28px;letter-spacing:3px;margin:0}.addr{line-height:1.5;max-width:280px}.multiline{white-space:pre-line;overflow-wrap:anywhere}
           .box{border:1px solid #222;margin-top:24px}.title{text-align:center;font-size:20px;font-weight:800;padding:8px;border-bottom:1px solid #222}.grid{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid #222}.cell{padding:10px;line-height:1.8}.cell+ .cell{border-left:1px solid #222}
           .receiver{padding:8px;border-bottom:1px solid #222;line-height:1.65}.receiver h3{margin:0 0 7px}.items{width:100%;border-collapse:collapse}.items th,.items td{border:1px solid #444;padding:9px}.items th{background:#e5e7eb}.right{text-align:right}.center{text-align:center}.strong{font-weight:800;font-size:15px}
           .words,.declaration{padding:10px;border-top:1px solid #222}.declaration{min-height:150px}.sign{text-align:right;margin-top:35px;font-weight:700}
@@ -392,7 +392,7 @@ export default function Billing() {
           <div class="box"><div class="title">TAX INVOICE</div>
             <div class="grid"><div class="cell"><strong>Invoice No:</strong> ${escapeHtml(invoice.invoiceNo)}<br><strong>Invoice Date:</strong> ${escapeHtml(formatDate(invoice.date))}<br><strong>State Code:</strong> ${escapeHtml(supplierStateCode)}<br><strong>GST:</strong> ${escapeHtml(profile.gstNumber || '-')}</div>
             <div class="cell"><strong>Transportation Mode:</strong> ${escapeHtml(invoice.transportationMode || 'By Road')}<br><strong>Vehicle No:</strong><div style="padding-left:12px">${vehicleNumberHtml}</div><strong>Vendor Code:</strong> ${escapeHtml(invoice.vendorCode || invoice.location?.company?.vendorCode || '-')}<br><strong>Period:</strong> ${escapeHtml(formatDate(invoice.periodFrom))} to ${escapeHtml(formatDate(invoice.periodTo))}</div></div>
-            <div class="receiver"><h3>Details of Receiver / Billed to</h3><strong>Name:</strong> ${escapeHtml(clientName)}<br><strong>Address:</strong> ${escapeHtml(clientAddress || '-')}<br><strong>GSTIN:</strong> ${escapeHtml(invoice.location?.gstNumber || '-')}<br><strong>State Code:</strong> ${escapeHtml(receiverStateCode)}</div>
+            <div class="receiver"><h3>Details of Receiver / Billed to</h3><strong>Name:</strong> ${escapeHtml(clientName)}<br><strong>Address:</strong><div class="multiline">${escapeHtml(clientAddress || '-')}</div><strong>GSTIN:</strong> ${escapeHtml(invoice.location?.gstNumber || '-')}<br><strong>State Code:</strong> ${escapeHtml(receiverStateCode)}</div>
             <table class="items"><thead><tr><th style="width:12%">Slr No</th><th>Name of Product / Service</th><th style="width:18%">SAC</th><th style="width:24%">Total Amount (Rs.)</th></tr></thead><tbody>
               <tr><td class="center">1</td><td>${escapeHtml(invoice.productService || 'Transport Charges')}</td><td class="center">${escapeHtml(invoice.sacCode || '-')}</td><td class="right">${num(invoice.subTotal).toFixed(2)}</td></tr>
               <tr class="strong"><td colspan="3" class="right">Sub Total</td><td class="right">${num(invoice.subTotal).toFixed(2)}</td></tr>
@@ -444,6 +444,7 @@ export default function Billing() {
             .supplier { text-align: center; padding: 10px 16px; border-bottom: 1px solid #111827; }
             .supplier h1 { font-size: 24px; font-weight: 900; letter-spacing: 0; text-transform: uppercase; }
             .supplier p { font-size: 11px; line-height: 1.45; margin-top: 3px; }
+            .multiline { white-space: pre-line; overflow-wrap: anywhere; }
             .meta-grid { display: grid; grid-template-columns: 1.25fr 0.75fr; border-bottom: 1px solid #111827; }
             .party, .invoice-meta { padding: 10px 12px; min-height: 122px; }
             .invoice-meta { border-left: 1px solid #111827; }
@@ -480,7 +481,7 @@ export default function Billing() {
               <div class="invoice-title">Tax Invoice</div>
               <div class="supplier">
                 <h1>${escapeHtml(supplierName)}</h1>
-                <p>${escapeHtml(supplierAddress || '-')}</p>
+                <p class="multiline">${escapeHtml(supplierAddress || '-')}</p>
                 <p>
                   GSTIN: <strong>${escapeHtml(profile.gstNumber || '-')}</strong>
                   &nbsp; | &nbsp; PAN: <strong>${escapeHtml(profile.panNumber || '-')}</strong>
@@ -491,7 +492,7 @@ export default function Billing() {
                 <div class="party">
                   <div class="label">Bill To</div>
                   <div class="name">${escapeHtml(clientName)}</div>
-                  <div class="line">${escapeHtml(clientAddress || '-')}</div>
+                  <div class="line multiline">${escapeHtml(clientAddress || '-')}</div>
                   <div class="line"><strong>GSTIN:</strong> ${escapeHtml(invoice.location?.gstNumber || '-')}</div>
                   <div class="line"><strong>PAN:</strong> ${escapeHtml(invoice.location?.company?.panNumber || '-')}</div>
                 </div>
@@ -714,7 +715,7 @@ export default function Billing() {
               <option value="LPG Bill">LPG Bill</option>
               <option value="Detailed">Detailed</option>
             </select>
-            <input value={quickLocation.address} onChange={event => setQuickLocation(previous => ({ ...previous, address: event.target.value }))} placeholder="Bill-To address" style={fieldStyle} />
+            <textarea value={quickLocation.address} onChange={event => setQuickLocation(previous => ({ ...previous, address: event.target.value }))} placeholder="Bill-To address (use a new line for each address line)" rows={3} style={{ ...fieldStyle, resize: 'vertical' }} />
           </div>
           <button type="button" disabled={setupSaving} onClick={createQuickLocation} style={{ marginTop: '10px', padding: '9px 14px', border: 0, borderRadius: '6px', background: '#2563eb', color: 'white', fontWeight: 800, cursor: 'pointer' }}>{setupSaving ? 'Saving...' : 'Create & Select Billing Location'}</button>
         </div>}
