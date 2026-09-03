@@ -31,13 +31,14 @@ const Bar = ({ label, value, max, color }) => (
     </div>
 );
 
-function SortableReportTable({ rows, columns, title, tableTitle, exportExcel, printReport }) {
+function SortableReportTable({ rows, columns, title, tableTitle, exportExcel, exportCsv, printReport }) {
     const [processedRows, setProcessedRows] = useState(rows);
 
     return (
         <>
             <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
                 <button onClick={() => exportExcel(processedRows, columns, title)} style={{ padding: '9px 14px', border: 0, borderRadius: '6px', background: '#0f766e', color: 'white', fontWeight: 800, cursor: 'pointer' }}>Export Excel</button>
+                <button onClick={() => exportCsv(processedRows, columns, title)} style={{ padding: '9px 14px', border: 0, borderRadius: '6px', background: '#475569', color: 'white', fontWeight: 800, cursor: 'pointer' }}>Export CSV</button>
                 <button onClick={() => printReport(processedRows, columns, title)} style={{ padding: '9px 14px', border: 0, borderRadius: '6px', background: '#2563eb', color: 'white', fontWeight: 800, cursor: 'pointer' }}>Print Report</button>
             </div>
             <DataTable data={rows} columns={columns} title={tableTitle || title.replace(/_/g, ' ')} enableColumnFilters onFilteredDataChange={setProcessedRows} />
@@ -162,13 +163,24 @@ export default function Reports() {
     };
     const exportExcel = (rows, columns, title) => {
         if (!rows.length) return alert('No data to export.');
-        const html = `<html><head><meta charset="utf-8" /></head><body><table border="1"><thead><tr>${columns.map(c => `<th>${htmlEscape(c.header)}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${columns.map(c => `<td>${htmlEscape(tableValue(row, c))}</td>`).join('')}</tr>`).join('')}</tbody></table></body></html>`;
+        const html = `<html><head><meta charset="utf-8" /><style>.excel-text{mso-number-format:"\\@";}</style></head><body><table border="1"><thead><tr>${columns.map(c => `<th>${htmlEscape(c.header)}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${columns.map(c => `<td${c.excelText ? ' class="excel-text"' : ''}>${htmlEscape(tableValue(row, c))}</td>`).join('')}</tr>`).join('')}</tbody></table></body></html>`;
         downloadFile(html, 'application/vnd.ms-excel', `${title}_${today()}.xls`);
+    };
+    const exportCsv = (rows, columns, title) => {
+        if (!rows.length) return alert('No data to export.');
+        const csvCell = (value, forceText = false) => {
+            const content = `${forceText && value !== '' ? '\t' : ''}${String(value ?? '')}`;
+            return `"${content.replace(/"/g, '""')}"`;
+        };
+        const csv = [columns.map(column => csvCell(column.header)).join(','), ...rows.map(row => columns.map(column => csvCell(tableValue(row, column), column.excelText)).join(','))].join('\r\n');
+        downloadFile(`\ufeff${csv}`, 'text/csv;charset=utf-8', `${title}_${today()}.csv`);
     };
     const printReport = (rows, columns, title) => {
         if (!rows.length) return alert('No data to print.');
         const printWindow = window.open('', '_blank');
-        printWindow.document.write(`<html><head><title>${htmlEscape(title)}</title><style>@page{size:A4 landscape;margin:8mm}body{font-family:Arial,sans-serif;padding:12px;color:#111827}h2{margin:0 0 4px;font-size:18px}p{color:#64748b;font-size:11px;margin:0 0 12px}table{width:100%;border-collapse:collapse;font-size:10px;table-layout:auto}th,td{border:1px solid #cbd5e1;padding:5px;text-align:left;vertical-align:top;word-break:break-word}th{background:#f1f5f9;color:#334155}@media print{body{padding:0}}</style></head><body><h2>${htmlEscape(title.replace(/_/g, ' '))}</h2><p>Generated on ${new Date().toLocaleString()}</p><table><thead><tr>${columns.map(c => `<th>${htmlEscape(c.header)}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${columns.map(c => `<td>${htmlEscape(tableValue(row, c))}</td>`).join('')}</tr>`).join('')}</tbody></table><script>window.onload=()=>window.print()</script></body></html>`);
+        const dense = columns.length > 10;
+        const colgroup = `<colgroup>${columns.map(column => `<col${column.printWidth ? ` style="width:${column.printWidth}"` : ''}>`).join('')}</colgroup>`;
+        printWindow.document.write(`<html><head><title>${htmlEscape(title)}</title><style>@page{size:A4 landscape;margin:6mm}*{box-sizing:border-box}body{font-family:Arial,sans-serif;padding:8px;color:#111827}h2{margin:0 0 3px;font-size:16px}p{color:#64748b;font-size:9px;margin:0 0 8px}table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:${dense ? '7px' : '9px'}}thead{display:table-header-group}tr{break-inside:avoid;page-break-inside:avoid}th,td{border:1px solid #94a3b8;padding:${dense ? '2px 3px' : '4px'};text-align:left;vertical-align:middle;line-height:1.25;overflow-wrap:anywhere}th{background:#e2e8f0;color:#1e293b;font-weight:700}.nowrap{white-space:nowrap;overflow-wrap:normal}.number{text-align:right}@media print{body{padding:0}}</style></head><body><h2>${htmlEscape(title.replace(/_/g, ' '))}</h2><p>Generated on ${new Date().toLocaleString()}</p><table>${colgroup}<thead><tr>${columns.map(c => `<th class="${c.nowrap ? 'nowrap' : ''}">${htmlEscape(c.header)}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${columns.map(c => `<td class="${[c.nowrap ? 'nowrap' : '', c.align === 'right' ? 'number' : ''].filter(Boolean).join(' ')}">${htmlEscape(tableValue(row, c))}</td>`).join('')}</tr>`).join('')}</tbody></table><script>window.onload=()=>window.print()</script></body></html>`);
         printWindow.document.close();
     };
     if (data.loading) return <div style={{ padding: '40px', fontWeight: 800 }}>Loading reports...</div>;
@@ -205,17 +217,17 @@ export default function Reports() {
         { header: 'Outstanding', key: 'outstanding', render: c => <strong>{money(c.outstanding)}</strong>, exportValue: c => c.outstanding }
     ];
     const loanCols = [
-        { header: 'Loan No', key: 'loanNo', render: loan => <strong>{loan.loanNo || '-'}</strong>, exportValue: loan => loan.loanNo || '' },
-        { header: 'Bank / Finance', key: 'lenderName', render: loan => loan.lenderName, exportValue: loan => loan.lenderName },
-        { header: 'Provider Bank', key: 'lenderBankName', render: loan => loan.lenderBankName || '-', exportValue: loan => loan.lenderBankName || '' },
-        { header: 'Account No', key: 'lenderAccountNo', render: loan => loan.lenderAccountNo || '-', exportValue: loan => loan.lenderAccountNo || '' },
-        { header: 'IFSC', key: 'lenderIfscCode', render: loan => loan.lenderIfscCode || '-', exportValue: loan => loan.lenderIfscCode || '' },
-        { header: 'Vehicle', key: 'vehicle.regNo', render: loan => loan.vehicle?.regNo || '-', exportValue: loan => loan.vehicle?.regNo || '' },
-        { header: 'Loan Amount', key: 'principalAmount', render: loan => money(loan.principalAmount), exportValue: loan => loan.principalAmount },
-        { header: 'Outstanding', key: 'outstandingAmount', render: loan => <strong>{money(loan.outstandingAmount)}</strong>, exportValue: loan => loan.outstandingAmount },
-        { header: 'EMI', key: 'emiAmount', render: loan => money(loan.emiAmount), exportValue: loan => loan.emiAmount },
-        { header: 'Monthly Due Date', key: 'nextDueDate', render: loan => dateText(loan.nextDueDate), exportValue: loan => dateText(loan.nextDueDate) },
-        { header: 'Paid Date', key: 'paidDate', render: loan => dateText(loan.paidDate), exportValue: loan => dateText(loan.paidDate) },
+        { header: 'Loan No', key: 'loanNo', render: loan => <strong>{loan.loanNo || '-'}</strong>, exportValue: loan => loan.loanNo || '', excelText: true, printWidth: '7%', nowrap: true },
+        { header: 'Bank / Finance', key: 'lenderName', render: loan => loan.lenderName, exportValue: loan => loan.lenderName, printWidth: '10%' },
+        { header: 'Provider Bank', key: 'lenderBankName', render: loan => loan.lenderBankName || '-', exportValue: loan => loan.lenderBankName || '', printWidth: '8%' },
+        { header: 'Account No', key: 'lenderAccountNo', render: loan => loan.lenderAccountNo || '-', exportValue: loan => String(loan.lenderAccountNo || ''), excelText: true, printWidth: '11%', nowrap: true },
+        { header: 'IFSC', key: 'lenderIfscCode', render: loan => loan.lenderIfscCode || '-', exportValue: loan => loan.lenderIfscCode || '', excelText: true, printWidth: '8%', nowrap: true },
+        { header: 'Vehicle', key: 'vehicle.regNo', render: loan => loan.vehicle?.regNo || '-', exportValue: loan => loan.vehicle?.regNo || '', excelText: true, printWidth: '7%', nowrap: true },
+        { header: 'Loan Amount', key: 'principalAmount', render: loan => money(loan.principalAmount), exportValue: loan => loan.principalAmount, printWidth: '8%', align: 'right', nowrap: true },
+        { header: 'Outstanding', key: 'outstandingAmount', render: loan => <strong>{money(loan.outstandingAmount)}</strong>, exportValue: loan => loan.outstandingAmount, printWidth: '8%', align: 'right', nowrap: true },
+        { header: 'EMI', key: 'emiAmount', render: loan => money(loan.emiAmount), exportValue: loan => loan.emiAmount, printWidth: '7%', align: 'right', nowrap: true },
+        { header: 'Monthly Due Date', key: 'nextDueDate', render: loan => dateText(loan.nextDueDate), exportValue: loan => dateText(loan.nextDueDate), printWidth: '7%', nowrap: true },
+        { header: 'Paid Date', key: 'paidDate', render: loan => dateText(loan.paidDate), exportValue: loan => dateText(loan.paidDate), printWidth: '7%', nowrap: true },
         { header: 'Payment Status', key: 'paymentStatus', render: loan => loan.paymentStatus || 'Due', exportValue: loan => loan.paymentStatus || 'Due' },
         { header: 'Loan Status', key: 'status', render: loan => loan.status, exportValue: loan => loan.status },
         { header: 'Remarks', key: 'remarks', render: loan => loan.remarks || '-', exportValue: loan => loan.remarks || '' }
@@ -255,12 +267,12 @@ export default function Reports() {
                 <select value={filters.voucherStatus} onChange={e => setFilters({ ...filters, voucherStatus: e.target.value })} style={{ padding: '9px', border: '1px solid #cbd5e1', borderRadius: '6px' }}><option value="All">All voucher statuses</option><option value="Posted">Posted</option><option value="Reversed">Reversed</option></select>
             </div>}
             {activeTab === 'summary' && <><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '14px', marginBottom: '18px' }}><StatCard label="Ledger Revenue" value={money(revenue)} tone="#2563eb" sub="Income ledger balance" /><StatCard label="Ledger Expenses" value={money(expenses)} tone="#dc2626" sub="Expense ledger balance" /><StatCard label="Gross Profit" value={money(grossProfit)} tone={grossProfit >= 0 ? '#0f766e' : '#dc2626'} sub={`Margin ${pct(margin)}`} /><StatCard label="Receivables" value={money(receivables)} tone="#b45309" sub="Open client ledger balance" /><StatCard label="Payables" value={money(payables)} tone="#7c3aed" sub="Vendor and pump creditors" /><StatCard label="Loan Outstanding" value={money(loanOutstanding)} tone="#9333ea" sub={`${dueLoans.length} loans not marked paid`} /><StatCard label="Monthly EMI" value={money(loanMonthlyEmi)} tone="#0f766e" sub="Active loan cash outflow" /><StatCard label="Diesel Control" value={money(dieselControl)} tone="#0f766e" sub="Client/vendor diesel subledgers" /><StatCard label="Output Tax" value={money(taxPayable)} tone="#475569" sub="Duties & Taxes" /></div><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '16px' }}><Section title="Collections Snapshot"><Bar label="Invoiced" value={invoiced} max={Math.max(invoiced, collected, 1)} color="#2563eb" /><Bar label="Collected incl. advances" value={collected} max={Math.max(invoiced, collected, 1)} color="#0f766e" /><Bar label="Unbilled trips" value={unbilled} max={Math.max(invoiced, unbilled, 1)} color="#b45309" /></Section><Section title="Loan Snapshot"><Bar label="Principal" value={loanPrincipal} max={Math.max(loanPrincipal, loanOutstanding, 1)} color="#7c3aed" /><Bar label="Outstanding" value={loanOutstanding} max={Math.max(loanPrincipal, loanOutstanding, 1)} color="#b45309" /><Bar label="Monthly EMI" value={loanMonthlyEmi} max={Math.max(loanPrincipal, loanMonthlyEmi, 1)} color="#0f766e" /></Section><Section title="Receivable Aging">{Object.entries(aging).map(([label, value]) => <Bar key={label} label={label} value={value} max={agingMax} color={label === '90+' ? '#dc2626' : '#0f766e'} />)}</Section><Section title="Top Client Outstanding">{clientRows.slice(0, 5).map(c => <Bar key={c.id} label={c.name} value={c.outstanding} max={Math.max(clientRows[0]?.outstanding || 1, 1)} color="#7c3aed" />)}</Section></div></>}
-            {activeTab === 'trips' && <SortableReportTable rows={tripRows} columns={tripCols} title="Trip_Margin_Report" tableTitle="Trip Profitability" exportExcel={exportExcel} printReport={printReport} />}
-            {activeTab === 'invoices' && <SortableReportTable rows={filteredInvoices} columns={invoiceCols} title="Invoice_Collections_Report" tableTitle="Invoice Collections" exportExcel={exportExcel} printReport={printReport} />}
-            {activeTab === 'clients' && <SortableReportTable rows={clientRows} columns={clientCols} title="Client_Performance_Report" tableTitle="Client Performance" exportExcel={exportExcel} printReport={printReport} />}
-            {activeTab === 'loans' && <SortableReportTable rows={filteredLoans} columns={loanCols} title="Loan_Tracking_Report" tableTitle="Loan Tracking" exportExcel={exportExcel} printReport={printReport} />}
-            {activeTab === 'vouchers' && <SortableReportTable rows={filteredVouchers} columns={voucherCols} title="Voucher_Register_Report" tableTitle="Voucher Register" exportExcel={exportExcel} printReport={printReport} />}
-            {activeTab === 'accounts' && <><div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}><select value={filters.group} onChange={e => setFilters({ ...filters, group: e.target.value })}><option value="All">All groups</option><option value="Sundry Debtors">Sundry Debtors</option><option value="Sundry Creditors">Sundry Creditors</option><option value="Cash/Bank">Cash/Bank</option><option value="Direct Income">Income</option><option value="Expense">Expense</option><option value="Duties & Taxes">Duties & Taxes</option><option value="Client Diesel">Client Diesel</option><option value="Vendor Diesel">Vendor Diesel</option></select></div><SortableReportTable rows={filteredAccounts} columns={accountCols} title="Ledger_Audit_Report" tableTitle="Ledger Account Audit" exportExcel={exportExcel} printReport={printReport} /></>}
+            {activeTab === 'trips' && <SortableReportTable rows={tripRows} columns={tripCols} title="Trip_Margin_Report" tableTitle="Trip Profitability" exportExcel={exportExcel} exportCsv={exportCsv} printReport={printReport} />}
+            {activeTab === 'invoices' && <SortableReportTable rows={filteredInvoices} columns={invoiceCols} title="Invoice_Collections_Report" tableTitle="Invoice Collections" exportExcel={exportExcel} exportCsv={exportCsv} printReport={printReport} />}
+            {activeTab === 'clients' && <SortableReportTable rows={clientRows} columns={clientCols} title="Client_Performance_Report" tableTitle="Client Performance" exportExcel={exportExcel} exportCsv={exportCsv} printReport={printReport} />}
+            {activeTab === 'loans' && <SortableReportTable rows={filteredLoans} columns={loanCols} title="Loan_Tracking_Report" tableTitle="Loan Tracking" exportExcel={exportExcel} exportCsv={exportCsv} printReport={printReport} />}
+            {activeTab === 'vouchers' && <SortableReportTable rows={filteredVouchers} columns={voucherCols} title="Voucher_Register_Report" tableTitle="Voucher Register" exportExcel={exportExcel} exportCsv={exportCsv} printReport={printReport} />}
+            {activeTab === 'accounts' && <><div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}><select value={filters.group} onChange={e => setFilters({ ...filters, group: e.target.value })}><option value="All">All groups</option><option value="Sundry Debtors">Sundry Debtors</option><option value="Sundry Creditors">Sundry Creditors</option><option value="Cash/Bank">Cash/Bank</option><option value="Direct Income">Income</option><option value="Expense">Expense</option><option value="Duties & Taxes">Duties & Taxes</option><option value="Client Diesel">Client Diesel</option><option value="Vendor Diesel">Vendor Diesel</option></select></div><SortableReportTable rows={filteredAccounts} columns={accountCols} title="Ledger_Audit_Report" tableTitle="Ledger Account Audit" exportExcel={exportExcel} exportCsv={exportCsv} printReport={printReport} /></>}
         </div>
     );
 }
