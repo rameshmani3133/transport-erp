@@ -115,6 +115,10 @@ export default function Billing() {
   const [filterEndDate, setFilterEndDate] = useState('');
   const [filterFromLoc, setFilterFromLoc] = useState('');
   const [filterToLoc, setFilterToLoc] = useState('');
+  const [quickClientName, setQuickClientName] = useState('');
+  const [quickLocation, setQuickLocation] = useState({ locationName: '', address: '', gstNumber: '', invoiceFormat: 'Standard' });
+  const [setupSaving, setSetupSaving] = useState(false);
+  const [setupError, setSetupError] = useState('');
 
   const fetchData = async () => {
     try {
@@ -138,6 +142,56 @@ export default function Billing() {
   };
 
   useEffect(() => { fetchData(); }, []);
+
+  const createQuickClient = async () => {
+    const companyName = quickClientName.trim();
+    if (!companyName) return setSetupError('Enter the client company name.');
+    setSetupSaving(true);
+    setSetupError('');
+    try {
+      const response = await fetch('/api/companies', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ companyName, status: 'Active' })
+      });
+      const client = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(client.error || 'Failed to create client.');
+      setCompanies(previous => [client, ...previous.filter(item => item.id !== client.id)]);
+      setSelectedClientId(String(client.id));
+      setQuickClientName('');
+      setFormData(initialInvoice);
+    } catch (error) {
+      setSetupError(error.message);
+    } finally {
+      setSetupSaving(false);
+    }
+  };
+
+  const createQuickLocation = async () => {
+    if (!selectedClientId) return setSetupError('Select a client first.');
+    if (!quickLocation.locationName.trim()) return setSetupError('Enter the branch or billing location name.');
+    setSetupSaving(true);
+    setSetupError('');
+    try {
+      const response = await fetch('/api/locations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...quickLocation, companyId: selectedClientId })
+      });
+      const created = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(created.error || 'Failed to create billing location.');
+      const client = companies.find(item => String(item.id) === String(selectedClientId));
+      const location = { ...created, company: client || created.company };
+      setLocations(previous => [location, ...previous.filter(item => item.id !== location.id)]);
+      setFormData(previous => ({ ...initialInvoice, locationId: String(location.id), vendorCode: client?.vendorCode || '', clientAccountId: previous.clientAccountId, incomeAccountId: previous.incomeAccountId }));
+      setQuickLocation({ locationName: '', address: '', gstNumber: '', invoiceFormat: 'Standard' });
+      await fetchData();
+    } catch (error) {
+      setSetupError(error.message);
+    } finally {
+      setSetupSaving(false);
+    }
+  };
 
   const selectedLocation = locations.find(l => String(l.id) === String(formData.locationId));
   const isIocl = selectedLocation?.invoiceFormat === 'IOCL INVOICE';
@@ -611,6 +665,14 @@ export default function Billing() {
 
       <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '8px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', marginBottom: '20px' }}>
         <h3 style={{ fontSize: '14px', color: '#334155', marginTop: 0 }}>Select Client and Invoice Type</h3>
+        {companies.length === 0 && <div style={{ padding: '14px', marginBottom: '15px', border: '1px solid #f59e0b', borderRadius: '8px', background: '#fffbeb' }}>
+          <strong style={{ color: '#92400e' }}>This company does not have a Bill-To client yet.</strong>
+          <p style={{ color: '#78350f', fontSize: '13px', margin: '5px 0 10px' }}>Create the customer/client here. It will be saved only under the currently selected tenant and its ledger will be mapped automatically.</p>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <input value={quickClientName} onChange={event => setQuickClientName(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); createQuickClient(); } }} placeholder="Client company name" style={{ ...fieldStyle, maxWidth: '360px' }} />
+            <button type="button" disabled={setupSaving} onClick={createQuickClient} style={{ padding: '9px 14px', border: 0, borderRadius: '6px', background: '#2563eb', color: 'white', fontWeight: 800, cursor: 'pointer' }}>Create Client</button>
+          </div>
+        </div>}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '15px' }}>
           <Field label="Client">
             <select value={selectedClientId} onChange={event => {
@@ -640,7 +702,23 @@ export default function Billing() {
             </select>
           </Field>}
         </div>
-        {selectedClientId && clientLocations.length === 0 && <p style={{ color: '#b45309', marginBottom: 0 }}>No billing location is configured for this client.</p>}
+        {selectedClientId && clientLocations.length === 0 && <div style={{ padding: '14px', marginTop: '15px', border: '1px solid #f59e0b', borderRadius: '8px', background: '#fffbeb' }}>
+          <strong style={{ color: '#92400e' }}>No billing location is configured for this client.</strong>
+          <p style={{ color: '#78350f', fontSize: '13px', margin: '5px 0 10px' }}>Add the Bill-To branch and choose its invoice format. The new location will be selected automatically.</p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '10px' }}>
+            <input value={quickLocation.locationName} onChange={event => setQuickLocation(previous => ({ ...previous, locationName: event.target.value }))} placeholder="Branch / location name" style={fieldStyle} />
+            <input value={quickLocation.gstNumber} onChange={event => setQuickLocation(previous => ({ ...previous, gstNumber: event.target.value.toUpperCase() }))} placeholder="Client GSTIN" style={fieldStyle} />
+            <select value={quickLocation.invoiceFormat} onChange={event => setQuickLocation(previous => ({ ...previous, invoiceFormat: event.target.value }))} style={fieldStyle}>
+              <option value="Standard">Standard Combined Trips</option>
+              <option value="IOCL INVOICE">IOCL INVOICE</option>
+              <option value="LPG Bill">LPG Bill</option>
+              <option value="Detailed">Detailed</option>
+            </select>
+            <input value={quickLocation.address} onChange={event => setQuickLocation(previous => ({ ...previous, address: event.target.value }))} placeholder="Bill-To address" style={fieldStyle} />
+          </div>
+          <button type="button" disabled={setupSaving} onClick={createQuickLocation} style={{ marginTop: '10px', padding: '9px 14px', border: 0, borderRadius: '6px', background: '#2563eb', color: 'white', fontWeight: 800, cursor: 'pointer' }}>{setupSaving ? 'Saving...' : 'Create & Select Billing Location'}</button>
+        </div>}
+        {setupError && <p style={{ color: '#dc2626', fontWeight: 700, marginBottom: 0 }}>{setupError}</p>}
       </div>
 
       {selectedLocation ? (
