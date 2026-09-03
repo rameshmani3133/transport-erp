@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import DataTable from '../components/DataTable';
+import { useNavigate } from 'react-router-dom';
 
 const money = (value) => `Rs.${Number(value || 0).toFixed(2)}`;
 const today = () => new Date().toISOString().split('T')[0];
@@ -32,6 +33,7 @@ const initialLoan = {
 };
 
 export default function LoanTracking() {
+  const navigate = useNavigate();
   const [loans, setLoans] = useState([]);
   const [vehicles, setVehicles] = useState([]);
   const [accounts, setAccounts] = useState([]);
@@ -104,12 +106,11 @@ export default function LoanTracking() {
   };
 
   const updatePaymentStatus = async (loan, paymentStatus) => {
-    let paidDate = loan.paidDate ? new Date(loan.paidDate).toISOString().split('T')[0] : today();
     if (paymentStatus === 'Paid') {
-      paidDate = window.prompt('Enter paid date (YYYY-MM-DD)', paidDate);
-      if (!paidDate) return;
-      if (Number.isNaN(new Date(paidDate).getTime())) return alert('Enter a valid paid date.');
+      navigate('/payments', { state: { voucherType: 'LOAN_EMI', loanId: loan.id } });
+      return;
     }
+    let paidDate = loan.paidDate ? new Date(loan.paidDate).toISOString().split('T')[0] : today();
     const res = await fetch(`/api/loans/${loan.id}/payment-status`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },

@@ -99,6 +99,9 @@ router.put('/:id', async (req, res) => {
 
 router.patch('/:id/payment-status', async (req, res) => {
     try {
+        if (req.body.paymentStatus === 'Paid') {
+            return res.status(409).json({ error: 'Post loan payments through Voucher Center so principal, interest, bank, and outstanding balances stay synchronized.' });
+        }
         const paymentStatus = PAYMENT_STATUSES.includes(req.body.paymentStatus)
             ? req.body.paymentStatus
             : null;

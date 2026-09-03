@@ -1,158 +1,86 @@
-﻿import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import DataTable from '../components/DataTable';
+import { useLocation, useNavigate } from 'react-router-dom';
 
-const money = (value) => `Rs.${Number(value || 0).toFixed(2)}`;
-const today = () => new Date().toISOString().split('T')[0];
-const dateText = (value) => value ? new Date(value).toLocaleDateString() : '-';
+const money = v => `Rs.${Number(v || 0).toFixed(2)}`;
+const today = () => new Date().toISOString().slice(0, 10);
+const dateText = v => v ? new Date(v).toLocaleDateString('en-IN') : '-';
+const style = { padding: '10px', border: '1px solid #cbd5e1', borderRadius: '6px', width: '100%', background: 'white' };
+const TYPES = [
+  ['Receipts', [['CLIENT_RECEIPT','Client Receipt'],['OTHER_INCOME_RECEIPT','Other Income Receipt'],['LOAN_RECEIPT','Loan Received'],['CAPITAL_INTRODUCED','Capital Introduced'],['VENDOR_REFUND','Vendor Refund Received']]],
+  ['Payments', [['VENDOR_PAYMENT','Vendor Payment'],['PUMP_PAYMENT','Fuel Pump Payment'],['DRIVER_ADVANCE','Driver Advance'],['DRIVER_SALARY_PAYMENT','Driver Salary Payment'],['LOAN_EMI','Loan EMI Payment'],['MONTHLY_BILL_PAYMENT','Monthly Bill Payment'],['BILL_PAYABLE_PAYMENT','Bill Payable Settlement'],['EXPENSE_PAYMENT','Other Expense Payment'],['TAX_PAYMENT','Tax / GST / TDS Payment'],['OWNER_DRAWINGS','Owner Drawings'],['CLIENT_REFUND','Client Refund']]],
+  ['Purchases / Accruals', [['MONTHLY_BILL_ACCRUAL','Monthly Bill Accrual'],['ASSET_PURCHASE','Asset Purchase']]],
+  ['Transfers / Journals', [['ACCOUNT_TRANSFER','Cash / Bank Transfer'],['GENERAL_JOURNAL','General Journal']]]
+];
+const labels = Object.fromEntries(TYPES.flatMap(([, list]) => list));
+const blank = () => ({ requestKey:globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`, type:'CLIENT_RECEIPT', date:today(), partyAccountId:'', cashBankAccountId:'', incomeAccountId:'', expenseAccountId:'', assetAccountId:'', counterAccountId:'', destinationAccountId:'', payableAccountId:'', invoiceId:'', loanId:'', recurringBillId:'', amount:'', taxableAmount:'', principalAmount:'', interestAmount:'', chargesAmount:'', cgst:'', sgst:'', igst:'', tdsAmount:'', paymentMode:'Bank Transfer', referenceNo:'', narration:'', remarks:'', lines:[{accountId:'',type:'Dr',amount:'',description:''},{accountId:'',type:'Cr',amount:'',description:''}] });
 
-function voucherNoFromNarration(narration) {
-  return String(narration || '').match(/\[(PV-\d+)\]$/)?.[1] || '';
-}
+function Field({ label, children }) { return <label style={{display:'grid',gap:'6px',fontSize:'12px',fontWeight:700,color:'#475569'}}>{label}{children}</label>; }
+function AccountSelect({ value, change, items, placeholder='Select account', required=true }) { return <select value={value} onChange={e=>change(e.target.value)} required={required} style={style}><option value="">{placeholder}</option>{items.map(a=><option key={a.id} value={a.id}>{a.accountName} ({a.accountGroup})</option>)}</select>; }
 
 export default function PaymentVouchers() {
-  const [accounts, setAccounts] = useState([]);
-  const [invoices, setInvoices] = useState([]);
-  const [entries, setEntries] = useState([]);
-  const [formData, setFormData] = useState({
-    type: 'CLIENT_RECEIPT',
-    date: today(),
-    partyAccountId: '',
-    cashBankAccountId: '',
-    invoiceId: '',
-    amount: '',
-    paymentMode: 'Bank',
-    referenceNo: '',
-    remarks: ''
-  });
+  const location=useLocation(), navigate=useNavigate();
+  const [accounts,setAccounts]=useState([]), [invoices,setInvoices]=useState([]), [loans,setLoans]=useState([]), [bills,setBills]=useState([]), [vouchers,setVouchers]=useState([]);
+  const [form,setForm]=useState(blank()), [saving,setSaving]=useState(false);
+  const set=(key,value)=>setForm(old=>({...old,[key]:value}));
+  const load=async()=>{const responses=await Promise.all(['/api/ledger/accounts','/api/invoices','/api/loans','/api/recurring-bills','/api/vouchers'].map(url=>fetch(url)));const setters=[setAccounts,setInvoices,setLoans,setBills,setVouchers];for(let i=0;i<responses.length;i++)if(responses[i].ok)setters[i](await responses[i].json());};
+  useEffect(()=>{load().catch(console.error);},[]);
 
-  const fetchData = async () => {
-    const [aRes, iRes, pRes] = await Promise.all([
-      fetch('/api/ledger/accounts'),
-      fetch('/api/invoices'),
-      fetch('/api/payments')
-    ]);
-    if (aRes.ok) setAccounts(await aRes.json());
-    if (iRes.ok) setInvoices(await iRes.json());
-    if (pRes.ok) setEntries(await pRes.json());
-  };
+  const group = useMemo(()=>({
+    bank:accounts.filter(a=>/Cash|Bank/.test(a.accountGroup)), client:accounts.filter(a=>a.accountGroup?.includes('Sundry Debtors')),
+    vendor:accounts.filter(a=>a.accountGroup?.includes('Sundry Creditors (Vendors)')), pump:accounts.filter(a=>a.accountGroup?.includes('Sundry Creditors (Fuel Pump)')), advance:accounts.filter(a=>a.accountGroup?.includes('Loans & Advances')),
+    driverPayable:accounts.filter(a=>a.accountGroup?.includes('Driver/Payroll Payable')), liability:accounts.filter(a=>a.accountType==='Liability'),
+    tax:accounts.filter(a=>a.accountType==='Liability'&&/Tax|Duties/.test(a.accountGroup)), income:accounts.filter(a=>a.accountType==='Income'),
+    expense:accounts.filter(a=>a.accountType==='Expense'), asset:accounts.filter(a=>a.accountType==='Asset'&&!/Cash|Bank/.test(a.accountGroup)), equity:accounts.filter(a=>a.accountType==='Equity')
+  }),[accounts]);
+  const type=form.type, taxTypes=['MONTHLY_BILL_PAYMENT','MONTHLY_BILL_ACCRUAL','ASSET_PURCHASE'], usesTax=taxTypes.includes(type);
+  const partyTypes=['CLIENT_RECEIPT','CLIENT_REFUND','VENDOR_PAYMENT','PUMP_PAYMENT','VENDOR_REFUND','DRIVER_ADVANCE','DRIVER_SALARY_PAYMENT','BILL_PAYABLE_PAYMENT','TAX_PAYMENT','CAPITAL_INTRODUCED','OWNER_DRAWINGS'];
+  const partyItems=['CLIENT_RECEIPT','CLIENT_REFUND'].includes(type)?group.client:['VENDOR_PAYMENT','VENDOR_REFUND'].includes(type)?group.vendor:type==='PUMP_PAYMENT'?group.pump:type==='DRIVER_ADVANCE'?group.advance:type==='DRIVER_SALARY_PAYMENT'?group.driverPayable:type==='TAX_PAYMENT'?group.tax:['CAPITAL_INTRODUCED','OWNER_DRAWINGS'].includes(type)?group.equity:type==='BILL_PAYABLE_PAYMENT'?group.liability.filter(a=>a.accountGroup?.includes('Current Liabilities')):group.liability;
+  const bankNeeded=!['MONTHLY_BILL_ACCRUAL','ASSET_PURCHASE','GENERAL_JOURNAL'].includes(type);
+  const total=useMemo(()=>type==='LOAN_EMI'?(+form.principalAmount||0)+(+form.interestAmount||0)+(+form.chargesAmount||0):usesTax?(+form.taxableAmount||0)+(+form.cgst||0)+(+form.sgst||0)+(+form.igst||0):type==='LOAN_RECEIPT'?(+form.amount||0)+(+form.chargesAmount||0):type==='GENERAL_JOURNAL'?form.lines.filter(l=>l.type==='Dr').reduce((s,l)=>s+(+l.amount||0),0):(+form.amount||0),[form,type,usesTax]);
 
-  useEffect(() => { fetchData().catch(console.error); }, []);
+  const changeType=next=>setForm({...blank(),type:next,date:form.date,cashBankAccountId:form.cashBankAccountId,paymentMode:form.paymentMode});
+  const chooseInvoice=id=>{const inv=invoices.find(x=>String(x.id)===String(id)), party=group.client.find(x=>String(x.clientId)===String(inv?.location?.company?.id));setForm(f=>({...f,invoiceId:id,partyAccountId:party?String(party.id):f.partyAccountId,amount:inv?.balanceAmount||'',narration:inv?`Receipt against invoice ${inv.invoiceNo}`:''}));};
+  const chooseLoan=id=>{const loan=loans.find(x=>String(x.id)===String(id));setForm(f=>({...f,loanId:id,principalAmount:loan?Math.min(+loan.emiAmount||0,+loan.outstandingAmount||0):'',amount:type==='LOAN_RECEIPT'?loan?.principalAmount||'':f.amount,narration:loan?`${type==='LOAN_EMI'?'EMI payment':'Loan received'} - ${loan.loanNo||loan.lenderName}`:''}));};
+  const chooseBill=id=>{const bill=bills.find(x=>String(x.id)===String(id));setForm(f=>({...f,recurringBillId:id,taxableAmount:bill?.amount||'',expenseAccountId:bill?.expenseAccountId||'',payableAccountId:bill?.payableAccountId||'',narration:bill?`${type==='MONTHLY_BILL_ACCRUAL'?'Accrual':'Payment'} - ${bill.billName}`:''}));};
+  useEffect(()=>{const state=location.state;if(!state?.voucherType)return;const base={...blank(),type:state.voucherType};if(state.voucherType==='LOAN_EMI'&&loans.length){const loan=loans.find(x=>String(x.id)===String(state.loanId));setForm({...base,loanId:String(state.loanId),principalAmount:loan?Math.min(+loan.emiAmount||0,+loan.outstandingAmount||0):'',narration:loan?`EMI payment - ${loan.loanNo||loan.lenderName}`:''});navigate('/payments',{replace:true,state:null});}if(state.voucherType==='MONTHLY_BILL_PAYMENT'&&bills.length){const bill=bills.find(x=>String(x.id)===String(state.recurringBillId));setForm({...base,recurringBillId:String(state.recurringBillId),taxableAmount:bill?.amount||'',expenseAccountId:bill?.expenseAccountId||'',narration:bill?`Payment - ${bill.billName}`:''});navigate('/payments',{replace:true,state:null});}},[location.state,loans,bills,navigate]);
+  const updateLine=(i,key,value)=>setForm(f=>({...f,lines:f.lines.map((l,n)=>n===i?{...l,[key]:value}:l)}));
+  const submit=async e=>{e.preventDefault();setSaving(true);try{const r=await fetch('/api/vouchers',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(form)}),data=await r.json().catch(()=>({}));if(!r.ok)return alert(data.error||'Failed to post voucher.');alert(`Voucher posted: ${data.voucherNo}`);setForm(blank());await load();}finally{setSaving(false);}};
+  const reverse=async v=>{const reason=prompt(`Reason for reversing ${v.voucherNo}`);if(!reason)return;const r=await fetch(`/api/vouchers/${v.id}/reverse`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({date:today(),reason})}),data=await r.json().catch(()=>({}));if(!r.ok)return alert(data.error||'Reversal failed.');load();};
 
-  const cashBankAccounts = accounts.filter(a => a.accountGroup?.includes('Cash') || a.accountGroup?.includes('Bank'));
-  const partyAccounts = accounts.filter(a => {
-    if (formData.type === 'CLIENT_RECEIPT') return a.accountGroup?.includes('Sundry Debtors');
-    if (formData.type === 'PUMP_PAYMENT') return a.accountGroup?.includes('Fuel Pump');
-    if (formData.type === 'DRIVER_PAYMENT') return a.accountGroup?.includes('Loans & Advances');
-    return a.accountGroup?.includes('Sundry Creditors');
-  });
-
-  const openInvoices = invoices.filter(inv => inv.status !== 'Paid');
-
-  const vouchers = useMemo(() => {
-    const byVoucher = new Map();
-    entries.forEach(entry => {
-      const voucherNo = voucherNoFromNarration(entry.narration);
-      if (!voucherNo) return;
-      const current = byVoucher.get(voucherNo) || { id: voucherNo, voucherNo, date: entry.date, narration: entry.narration, debit: null, credit: null, amount: entry.amount };
-      if (entry.type === 'Dr') current.debit = entry.account?.accountName;
-      if (entry.type === 'Cr') current.credit = entry.account?.accountName;
-      current.invoiceNo = entry.invoice?.invoiceNo || current.invoiceNo;
-      byVoucher.set(voucherNo, current);
-    });
-    return Array.from(byVoucher.values()).sort((a, b) => new Date(b.date) - new Date(a.date));
-  }, [entries]);
-
-  const selectedInvoice = invoices.find(inv => String(inv.id) === String(formData.invoiceId));
-
-  useEffect(() => {
-    if (!selectedInvoice || formData.type !== 'CLIENT_RECEIPT') return;
-    const clientId = selectedInvoice.location?.company?.id;
-    const clientAccount = accounts.find(a => String(a.clientId) === String(clientId));
-    setFormData(prev => ({
-      ...prev,
-      partyAccountId: clientAccount ? String(clientAccount.id) : prev.partyAccountId,
-      amount: prev.amount || selectedInvoice.balanceAmount || ''
-    }));
-  }, [selectedInvoice?.id, accounts, formData.type]);
-
-  const submit = async (event) => {
-    event.preventDefault();
-    const res = await fetch('/api/payments', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(formData)
-    });
-    const data = await res.json();
-    if (!res.ok) return alert(data.error || 'Failed to post payment voucher.');
-    alert(`Voucher posted: ${data.voucherNo}`);
-    setFormData({ type: 'CLIENT_RECEIPT', date: today(), partyAccountId: '', cashBankAccountId: '', invoiceId: '', amount: '', paymentMode: 'Bank', referenceNo: '', remarks: '' });
-    fetchData();
-  };
-
-  const removeVoucher = async (voucherNo) => {
-    if (!(await window.confirmSnackbar(`Delete voucher ${voucherNo}? This will reverse both ledger sides.`))) return;
-    const res = await fetch(`/api/payments/${voucherNo}`, { method: 'DELETE' });
-    const data = await res.json();
-    if (!res.ok) return alert(data.error || 'Failed to delete voucher.');
-    fetchData();
-  };
-
-  const columns = [
-    { header: 'Voucher', key: 'voucherNo', render: v => <strong>{v.voucherNo}</strong> },
-    { header: 'Date', key: 'date', render: v => dateText(v.date) },
-    { header: 'Debit', key: 'debit', render: v => v.debit || '-' },
-    { header: 'Credit', key: 'credit', render: v => v.credit || '-' },
-    { header: 'Invoice', key: 'invoiceNo', render: v => v.invoiceNo || '-' },
-    { header: 'Amount', key: 'amount', render: v => <strong>{money(v.amount)}</strong> },
-    { header: 'Actions', key: 'actions', render: v => <button onClick={() => removeVoucher(v.voucherNo)} style={{ color: '#dc2626', background: 'none', border: 0, cursor: 'pointer', fontWeight: 'bold' }}>Delete</button> }
+  const columns=[
+    {header:'Voucher',key:'voucherNo',render:v=><strong>{v.voucherNo}</strong>},{header:'Date',key:'date',render:v=>dateText(v.date),exportValue:v=>dateText(v.date)},
+    {header:'Type',key:'voucherType',render:v=>labels[v.voucherType]||v.voucherType},{header:'Debit',key:'debit',filterValue:v=>v.lines?.filter(l=>l.type==='Dr').map(l=>l.account?.accountName).join(', '),render:v=>v.lines?.filter(l=>l.type==='Dr').map(l=>l.account?.accountName).join(', ')},
+    {header:'Credit',key:'credit',filterValue:v=>v.lines?.filter(l=>l.type==='Cr').map(l=>l.account?.accountName).join(', '),render:v=>v.lines?.filter(l=>l.type==='Cr').map(l=>l.account?.accountName).join(', ')},{header:'Amount',key:'totalAmount',render:v=><strong>{money(v.totalAmount)}</strong>},
+    {header:'Reference',key:'referenceNo',render:v=>v.referenceNo||'-'},{header:'Remarks',key:'remarks',render:v=>v.remarks||'-'},{header:'Status',key:'status',render:v=><strong>{v.status}</strong>},
+    {header:'Actions',key:'actions',render:v=>v.status==='Posted'&&v.voucherType!=='REVERSAL'?<button onClick={()=>reverse(v)} style={{color:'#dc2626',border:0,background:'none',fontWeight:800,cursor:'pointer'}}>Reverse</button>:<span>{v.reversalOf?.voucherNo?`For ${v.reversalOf.voucherNo}`:'-'}</span>}
   ];
 
-  return (
-    <div style={{ padding: '20px', maxWidth: '1400px', margin: '0 auto' }}>
-      <h2 style={{ color: '#0f172a', marginBottom: '20px' }}>Payment Vouchers</h2>
-      <form onSubmit={submit} style={{ background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '20px', marginBottom: '28px', boxShadow: '0 8px 24px rgba(15,23,42,0.06)' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '14px', alignItems: 'end' }}>
-          <label style={{ display: 'grid', gap: '6px', fontSize: '12px', fontWeight: 700, color: '#475569' }}>Voucher Type
-            <select value={formData.type} onChange={e => setFormData({ ...formData, type: e.target.value, partyAccountId: '', invoiceId: '' })} style={{ padding: '10px', border: '1px solid #cbd5e1', borderRadius: '6px' }}>
-              <option value="CLIENT_RECEIPT">Client Receipt</option>
-              <option value="VENDOR_PAYMENT">Vendor Payment</option>
-              <option value="PUMP_PAYMENT">Fuel Pump Payment</option>
-              <option value="DRIVER_PAYMENT">Driver Payment</option>
-            </select>
-          </label>
-          <label style={{ display: 'grid', gap: '6px', fontSize: '12px', fontWeight: 700, color: '#475569' }}>Date
-            <input type="date" value={formData.date} onChange={e => setFormData({ ...formData, date: e.target.value })} required style={{ padding: '10px', border: '1px solid #cbd5e1', borderRadius: '6px' }} />
-          </label>
-          <label style={{ display: 'grid', gap: '6px', fontSize: '12px', fontWeight: 700, color: '#475569' }}>Party Ledger
-            <select value={formData.partyAccountId} onChange={e => setFormData({ ...formData, partyAccountId: e.target.value })} required style={{ padding: '10px', border: '1px solid #cbd5e1', borderRadius: '6px' }}>
-              <option value="">Select party</option>
-              {partyAccounts.map(a => <option key={a.id} value={a.id}>{a.accountName}</option>)}
-            </select>
-          </label>
-          <label style={{ display: 'grid', gap: '6px', fontSize: '12px', fontWeight: 700, color: '#475569' }}>Cash/Bank
-            <select value={formData.cashBankAccountId} onChange={e => setFormData({ ...formData, cashBankAccountId: e.target.value })} required style={{ padding: '10px', border: '1px solid #cbd5e1', borderRadius: '6px' }}>
-              <option value="">Select cash/bank</option>
-              {cashBankAccounts.map(a => <option key={a.id} value={a.id}>{a.accountName}</option>)}
-            </select>
-          </label>
-          {formData.type === 'CLIENT_RECEIPT' && (
-            <label style={{ display: 'grid', gap: '6px', fontSize: '12px', fontWeight: 700, color: '#475569' }}>Invoice
-              <select value={formData.invoiceId} onChange={e => setFormData({ ...formData, invoiceId: e.target.value })} style={{ padding: '10px', border: '1px solid #cbd5e1', borderRadius: '6px' }}>
-                <option value="">General receipt</option>
-                {openInvoices.map(inv => <option key={inv.id} value={inv.id}>{inv.invoiceNo} - {money(inv.balanceAmount)}</option>)}
-              </select>
-            </label>
-          )}
-          <label style={{ display: 'grid', gap: '6px', fontSize: '12px', fontWeight: 700, color: '#475569' }}>Amount
-            <input type="number" step="any" value={formData.amount} onChange={e => setFormData({ ...formData, amount: e.target.value })} required style={{ padding: '10px', border: '1px solid #cbd5e1', borderRadius: '6px' }} />
-          </label>
-          <label style={{ display: 'grid', gap: '6px', fontSize: '12px', fontWeight: 700, color: '#475569' }}>Reference
-            <input value={formData.referenceNo} onChange={e => setFormData({ ...formData, referenceNo: e.target.value })} placeholder="UTR / cheque no" style={{ padding: '10px', border: '1px solid #cbd5e1', borderRadius: '6px' }} />
-          </label>
-          <button type="submit" style={{ padding: '11px 18px', background: '#0f766e', color: 'white', border: 0, borderRadius: '6px', fontWeight: 800, cursor: 'pointer' }}>Post Voucher</button>
-        </div>
-      </form>
-      <DataTable data={vouchers} columns={columns} title="Payment Voucher History" recycleBinType="ledgerEntries" onRecycleChanged={fetchData} />
-    </div>
-  );
+  return <div style={{padding:'20px',maxWidth:'1500px',margin:'0 auto'}}><h2 style={{marginBottom:'4px'}}>Voucher Center</h2><p style={{color:'#64748b',marginTop:0}}>Controlled, server-validated double-entry posting.</p>
+    <form onSubmit={submit} style={{background:'white',padding:'20px',border:'1px solid #e2e8f0',borderRadius:'10px',marginBottom:'26px'}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'end',gap:'12px',flexWrap:'wrap',marginBottom:'16px'}}><Field label="Voucher Type"><select value={type} onChange={e=>changeType(e.target.value)} style={{...style,minWidth:'290px'}}>{TYPES.map(([name,list])=><optgroup key={name} label={name}>{list.map(([v,l])=><option key={v} value={v}>{l}</option>)}</optgroup>)}</select></Field><strong style={{fontSize:'22px',color:'#0f766e'}}>{money(total)}</strong></div>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(210px,1fr))',gap:'14px'}}>
+        <Field label="Date"><input type="date" value={form.date} onChange={e=>set('date',e.target.value)} required style={style}/></Field>
+        {bankNeeded&&<Field label={type==='ACCOUNT_TRANSFER'?'Source Cash / Bank':'Cash / Bank'}><AccountSelect value={form.cashBankAccountId} change={v=>set('cashBankAccountId',v)} items={group.bank}/></Field>}
+        {partyTypes.includes(type)&&<Field label="Party / Ledger"><AccountSelect value={form.partyAccountId} change={v=>set('partyAccountId',v)} items={partyItems} required={!['CAPITAL_INTRODUCED','OWNER_DRAWINGS'].includes(type)} placeholder="Use standard account if blank"/></Field>}
+        {type==='CLIENT_RECEIPT'&&<Field label="Invoice (optional)"><select value={form.invoiceId} onChange={e=>chooseInvoice(e.target.value)} style={style}><option value="">General receipt</option>{invoices.filter(x=>x.status!=='Paid').map(x=><option key={x.id} value={x.id}>{x.invoiceNo} — {money(x.balanceAmount)}</option>)}</select></Field>}
+        {['LOAN_RECEIPT','LOAN_EMI'].includes(type)&&<Field label="Loan"><select value={form.loanId} onChange={e=>chooseLoan(e.target.value)} required style={style}><option value="">Select loan</option>{loans.filter(x=>x.status==='Active').map(x=><option key={x.id} value={x.id}>{x.loanNo||x.lenderName} — {money(x.outstandingAmount)}</option>)}</select></Field>}
+        {['MONTHLY_BILL_PAYMENT','MONTHLY_BILL_ACCRUAL'].includes(type)&&<Field label="Monthly Bill"><select value={form.recurringBillId} onChange={e=>chooseBill(e.target.value)} required style={style}><option value="">Select bill</option>{bills.filter(x=>x.status==='Active').map(x=><option key={x.id} value={x.id}>{x.billName} — {money(x.amount)}</option>)}</select></Field>}
+        {type==='OTHER_INCOME_RECEIPT'&&<Field label="Income Ledger"><AccountSelect value={form.incomeAccountId} change={v=>set('incomeAccountId',v)} items={group.income}/></Field>}
+        {['EXPENSE_PAYMENT','MONTHLY_BILL_PAYMENT','MONTHLY_BILL_ACCRUAL'].includes(type)&&<Field label="Expense Ledger"><AccountSelect value={form.expenseAccountId} change={v=>set('expenseAccountId',v)} items={group.expense} required={type==='EXPENSE_PAYMENT'} placeholder="Automatic from bill category"/></Field>}
+        {type==='MONTHLY_BILL_ACCRUAL'&&<Field label="Payable Ledger"><AccountSelect value={form.payableAccountId} change={v=>set('payableAccountId',v)} items={group.liability.filter(a=>a.accountGroup?.includes('Current Liabilities'))} required={false} placeholder="Standard Bills Payable"/></Field>}
+        {type==='ASSET_PURCHASE'&&<><Field label="Asset Ledger"><AccountSelect value={form.assetAccountId} change={v=>set('assetAccountId',v)} items={group.asset}/></Field><Field label="Bank / Supplier"><AccountSelect value={form.counterAccountId} change={v=>set('counterAccountId',v)} items={[...group.bank,...group.vendor]}/></Field></>}
+        {type==='ACCOUNT_TRANSFER'&&<Field label="Destination Cash / Bank"><AccountSelect value={form.destinationAccountId} change={v=>set('destinationAccountId',v)} items={group.bank}/></Field>}
+        {!usesTax&&!['LOAN_EMI','GENERAL_JOURNAL'].includes(type)&&<Field label={type==='LOAN_RECEIPT'?'Net Amount Received':'Amount'}><input type="number" min="0.01" step="0.01" value={form.amount} onChange={e=>set('amount',e.target.value)} required style={style}/></Field>}
+        {type==='LOAN_EMI'&&<><Field label="Principal"><input type="number" min="0.01" step="0.01" value={form.principalAmount} onChange={e=>set('principalAmount',e.target.value)} required style={style}/></Field><Field label="Interest"><input type="number" min="0" step="0.01" value={form.interestAmount} onChange={e=>set('interestAmount',e.target.value)} style={style}/></Field></>}
+        {['LOAN_EMI','LOAN_RECEIPT'].includes(type)&&<Field label="Charges / Penalty"><input type="number" min="0" step="0.01" value={form.chargesAmount} onChange={e=>set('chargesAmount',e.target.value)} style={style}/></Field>}
+        {usesTax&&<>{[['taxableAmount','Taxable / Base Amount'],['cgst','Input CGST'],['sgst','Input SGST'],['igst','Input IGST']].map(([key,label])=><Field key={key} label={label}><input type="number" min={key==='taxableAmount'?'0.01':'0'} step="0.01" value={form[key]} onChange={e=>set(key,e.target.value)} required={key==='taxableAmount'} style={style}/></Field>)}</>}
+        {['VENDOR_PAYMENT','PUMP_PAYMENT','MONTHLY_BILL_PAYMENT','MONTHLY_BILL_ACCRUAL'].includes(type)&&<Field label="TDS Withheld"><input type="number" min="0" step="0.01" value={form.tdsAmount} onChange={e=>set('tdsAmount',e.target.value)} style={style}/></Field>}
+        {type!=='MONTHLY_BILL_ACCRUAL'&&type!=='GENERAL_JOURNAL'&&<Field label="Payment Mode"><select value={form.paymentMode} onChange={e=>set('paymentMode',e.target.value)} style={style}>{['Bank Transfer','UPI','Cheque','Cash','Auto Debit','Other'].map(x=><option key={x}>{x}</option>)}</select></Field>}
+        <Field label="Reference / UTR"><input value={form.referenceNo} onChange={e=>set('referenceNo',e.target.value)} style={style}/></Field>
+      </div>
+      {type==='GENERAL_JOURNAL'&&<div style={{display:'grid',gap:'8px',marginTop:'16px'}}>{form.lines.map((l,i)=><div key={i} style={{display:'grid',gridTemplateColumns:'2fr .6fr 1fr 2fr auto',gap:'8px'}}><AccountSelect value={l.accountId} change={v=>updateLine(i,'accountId',v)} items={accounts}/><select value={l.type} onChange={e=>updateLine(i,'type',e.target.value)} style={style}><option>Dr</option><option>Cr</option></select><input type="number" min="0.01" step="0.01" value={l.amount} onChange={e=>updateLine(i,'amount',e.target.value)} required style={style}/><input value={l.description} onChange={e=>updateLine(i,'description',e.target.value)} placeholder="Description" style={style}/><button type="button" disabled={form.lines.length<=2} onClick={()=>set('lines',form.lines.filter((_,n)=>n!==i))}>x</button></div>)}<button type="button" onClick={()=>set('lines',[...form.lines,{accountId:'',type:'Dr',amount:'',description:''}])} style={{justifySelf:'start'}}>+ Add line</button></div>}
+      <div style={{display:'grid',gap:'12px',marginTop:'16px'}}><Field label="Narration"><input value={form.narration} onChange={e=>set('narration',e.target.value)} required style={style}/></Field><Field label="Remarks"><textarea value={form.remarks} onChange={e=>set('remarks',e.target.value)} rows={2} style={style}/></Field></div>
+      <div style={{display:'flex',justifyContent:'flex-end',gap:'10px',marginTop:'16px'}}><button type="button" onClick={()=>setForm(blank())}>Clear</button><button disabled={saving} type="submit" style={{padding:'10px 18px',border:0,borderRadius:'6px',background:'#0f766e',color:'white',fontWeight:800}}>{saving?'Posting...':'Post Balanced Voucher'}</button></div>
+    </form><DataTable data={vouchers} columns={columns} title="Voucher Register" enableColumnFilters/></div>;
 }

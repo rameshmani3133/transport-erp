@@ -45,7 +45,7 @@ router.get('/transactions/:accountId', async (req, res) => {
     try {
         const txns = await prisma.ledgerEntry.findMany({
             where: withTenant(req, { accountId: toRequiredInt(req.params.accountId, 'Account') }),
-            include: { trip: true, invoice: true, settlement: true, diesel: true, driverSettlement: true },
+            include: { trip: true, invoice: true, settlement: true, diesel: true, driverSettlement: true, voucher: true },
             orderBy: { date: 'desc' }
         });
         res.json(txns);
@@ -92,7 +92,7 @@ router.delete('/manual/:id', async (req, res) => {
     try {
         const existing = await prisma.ledgerEntry.findFirst({ where: withTenant(req, { id: toRequiredInt(req.params.id, 'Ledger entry') }) });
         if (!existing) return res.status(404).json({ error: "Entry not found." });
-        if (existing.tripId || existing.invoiceId || existing.settlementId || existing.dieselId || existing.driverSettlementId) {
+        if (existing.tripId || existing.invoiceId || existing.settlementId || existing.dieselId || existing.driverSettlementId || existing.voucherId) {
             return res.status(403).json({ error: "Cannot delete an automated system entry." });
         }
         const match = normalizeVoucherId(existing.narration).match(/\[(MV-\d+)\]$/);
@@ -165,4 +165,3 @@ router.delete('/account/:id', async (req, res) => {
 });
 
 module.exports = router;
-

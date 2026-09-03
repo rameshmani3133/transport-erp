@@ -97,7 +97,7 @@ export default function LedgerDashboard() {
     const handleExportCSV = () => {
         if (!exportTransactions.length) return alert('No transactions to export.');
         const rows = exportTransactions.map(t => {
-            const ref = t.trip?.tripNo || t.invoice?.invoiceNo || t.settlement?.settlementNo || t.driverSettlement?.settlementNo || 'Manual Voucher';
+            const ref = t.voucher?.voucherNo || t.trip?.tripNo || t.invoice?.invoiceNo || t.settlement?.settlementNo || t.driverSettlement?.settlementNo || 'Manual Voucher';
             return [dateText(t.date), t.narration || '', ref, t.type === 'Dr' ? Number(t.amount || 0).toFixed(2) : '', t.type === 'Cr' ? Number(t.amount || 0).toFixed(2) : '']
                 .map(value => `"${String(value).replace(/"/g, '""')}"`).join(',');
         });
@@ -118,7 +118,7 @@ export default function LedgerDashboard() {
             <style>body{font-family:Arial,sans-serif;padding:20px;color:#111827}table{width:100%;border-collapse:collapse;font-size:12px}th,td{border:1px solid #cbd5e1;padding:8px;text-align:left}th{background:#f1f5f9}.right{text-align:right}</style></head>
             <body><h2>${escapeHtml(selectedAccount.accountName)}</h2><p>${escapeHtml(selectedAccount.accountGroup)} | Balance: ${money(selectedAccount.currentBalance)} ${selectedAccount.balanceType}</p>
             <table><thead><tr><th>Date</th><th>Narration</th><th>Reference</th><th class="right">Dr</th><th class="right">Cr</th></tr></thead><tbody>
-            ${exportTransactions.map(t => `<tr><td>${dateText(t.date)}</td><td>${escapeHtml(t.narration || '-')}</td><td>${escapeHtml(t.trip?.tripNo || t.invoice?.invoiceNo || t.settlement?.settlementNo || t.driverSettlement?.settlementNo || 'Manual Voucher')}</td><td class="right">${t.type === 'Dr' ? money(t.amount) : '-'}</td><td class="right">${t.type === 'Cr' ? money(t.amount) : '-'}</td></tr>`).join('')}
+            ${exportTransactions.map(t => `<tr><td>${dateText(t.date)}</td><td>${escapeHtml(t.narration || '-')}</td><td>${escapeHtml(t.voucher?.voucherNo || t.trip?.tripNo || t.invoice?.invoiceNo || t.settlement?.settlementNo || t.driverSettlement?.settlementNo || 'Manual Voucher')}</td><td class="right">${t.type === 'Dr' ? money(t.amount) : '-'}</td><td class="right">${t.type === 'Cr' ? money(t.amount) : '-'}</td></tr>`).join('')}
             </tbody></table><script>window.onload=()=>{window.print();window.close()}</script></body></html>`);
         printWindow.document.close();
     };
@@ -134,11 +134,11 @@ export default function LedgerDashboard() {
     const txnColumns = [
         { header: 'Date', key: 'date', render: t => dateText(t.date) },
         { header: 'Narration', key: 'narration', render: t => t.narration || '-' },
-        { header: 'Reference', key: 'ref', sortValue: t => t.trip?.tripNo || t.invoice?.invoiceNo || t.settlement?.settlementNo || t.driverSettlement?.settlementNo || 'Manual Voucher', render: t => t.trip?.tripNo || t.invoice?.invoiceNo || t.settlement?.settlementNo || t.driverSettlement?.settlementNo || 'Manual Voucher' },
+        { header: 'Reference', key: 'ref', sortValue: t => t.voucher?.voucherNo || t.trip?.tripNo || t.invoice?.invoiceNo || t.settlement?.settlementNo || t.driverSettlement?.settlementNo || 'Manual Voucher', render: t => t.voucher?.voucherNo || t.trip?.tripNo || t.invoice?.invoiceNo || t.settlement?.settlementNo || t.driverSettlement?.settlementNo || 'Manual Voucher' },
         { header: 'Debit', key: 'debit', sortValue: t => t.type === 'Dr' ? Number(t.amount || 0) : null, render: t => t.type === 'Dr' ? <strong style={{ color: '#0f766e' }}>{money(t.amount)}</strong> : '-' },
         { header: 'Credit', key: 'credit', sortValue: t => t.type === 'Cr' ? Number(t.amount || 0) : null, render: t => t.type === 'Cr' ? <strong style={{ color: '#b45309' }}>{money(t.amount)}</strong> : '-' },
         { header: 'Actions', key: 'actions', render: t => {
-            const isManual = !t.tripId && !t.invoiceId && !t.settlementId && !t.dieselId && !t.driverSettlementId;
+            const isManual = !t.tripId && !t.invoiceId && !t.settlementId && !t.dieselId && !t.driverSettlementId && !t.voucherId;
             return isManual ? <button onClick={() => deleteManualVoucher(t.id)} style={{ background: 'none', border: 0, color: '#dc2626', cursor: 'pointer', fontWeight: 700 }}>Delete</button> : <span style={{ color: '#94a3b8', fontSize: '12px' }}>Auto-System</span>;
         }}
     ];

@@ -180,6 +180,8 @@ model RecurringBill {
   endDate          DateTime?
   status           String    @default("Active")
   remarks          String?
+  expenseAccountId Int?
+  payableAccountId Int?
   payments         RecurringBillPayment[]
 
   @@index([tenantKey, nextDueDate])
@@ -397,6 +399,7 @@ model Account {
   dieselPumps     Diesel[]  @relation("DieselPumpAccount")
   vendorSettlements VendorSettlement[] @relation("VendorSettlements")
   financeLoans    Loan[]    @relation("FinanceLoans")
+  voucherLines    VoucherLine[]
 
   @@unique([tenantKey, accountName])
   @@unique([tenantKey, clientId])
@@ -414,6 +417,9 @@ model LedgerEntry {
   type            String    
   amount          Float
   narration       String?   
+
+  voucherId       Int?
+  voucher         Voucher?  @relation(fields: [voucherId], references: [id])
   
   vehicleId       Int?
   vehicle         Vehicle?  @relation(fields: [vehicleId], references: [id]) 
@@ -432,6 +438,52 @@ model LedgerEntry {
   
   driverSettlementId Int?
   driverSettlement   DriverSettlement? @relation(fields: [driverSettlementId], references: [id]) 
+}
+
+model Voucher {
+  id              Int       @id @default(autoincrement())
+  tenantKey       String    @default("default")
+  deletedAt       DateTime?
+  voucherNo       String
+  requestKey      String?
+  voucherType     String
+  date            DateTime  @default(now())
+  status          String    @default("Posted")
+  totalAmount     Float
+  paymentMode     String?
+  referenceNo     String?
+  narration       String
+  remarks         String?
+  sourceType      String?
+  sourceId        Int?
+  metadata        Json?
+  reversalOfId    Int?
+  reversalOf      Voucher?  @relation("VoucherReversal", fields: [reversalOfId], references: [id])
+  reversals       Voucher[] @relation("VoucherReversal")
+  lines           VoucherLine[]
+  ledgerEntries   LedgerEntry[]
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([tenantKey, voucherNo])
+  @@unique([tenantKey, requestKey])
+  @@index([tenantKey, date])
+  @@index([tenantKey, voucherType])
+}
+
+model VoucherLine {
+  id              Int       @id @default(autoincrement())
+  tenantKey       String    @default("default")
+  voucherId       Int
+  voucher         Voucher   @relation(fields: [voucherId], references: [id])
+  accountId       Int
+  account         Account   @relation(fields: [accountId], references: [id])
+  type            String
+  amount          Float
+  description     String?
+
+  @@index([tenantKey, voucherId])
+  @@index([tenantKey, accountId])
 }
 
 // ==========================================

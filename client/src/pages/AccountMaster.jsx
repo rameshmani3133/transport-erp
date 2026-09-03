@@ -18,10 +18,11 @@ export default function AccountMaster() {
 
     // Dynamic Account Groups based on standard accounting rules
     const groupOptions = {
-        'Asset': ['Cash/Bank', 'Sundry Debtors (Clients)', 'Loans & Advances (Asset)', 'Fixed Assets'],
-        'Liability': ['Sundry Creditors (Vendors)', 'Sundry Creditors (Fuel Pump)', 'Duties & Taxes', 'Loans (Liability)'],
+        'Asset': ['Cash/Bank', 'Sundry Debtors (Clients)', 'Loans & Advances (Asset)', 'Fixed Assets', 'Duties & Taxes (Input Credit)'],
+        'Liability': ['Sundry Creditors (Vendors)', 'Sundry Creditors (Fuel Pump)', 'Duties & Taxes', 'Loans (Liability)', 'Driver/Payroll Payable', 'Other Current Liabilities'],
         'Income': ['Direct Income (Freight)', 'Indirect Income'],
-        'Expense': ['Direct Expense (Diesel/Tolls)', 'Vendor Freight Expense', 'Driver/Payroll Expense', 'Indirect Expense (Office/Admin)']
+        'Expense': ['Direct Expense (Diesel/Tolls)', 'Vendor Freight Expense', 'Driver/Payroll Expense', 'Indirect Expense (Office/Admin)', 'Finance Costs'],
+        'Equity': ['Capital & Reserves']
     };
 
     const fetchAccounts = async () => {
@@ -121,6 +122,7 @@ export default function AccountMaster() {
                             <option value="Liability">Liability (Payables, Loans)</option>
                             <option value="Income">Income (Revenue)</option>
                             <option value="Expense">Expense (Costs)</option>
+                            <option value="Equity">Equity (Capital/Drawings)</option>
                         </select>
                     </div>
 

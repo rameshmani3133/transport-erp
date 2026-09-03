@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import DataTable from '../components/DataTable';
+import { useNavigate } from 'react-router-dom';
 
 const fieldStyle = { padding: '9px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px' };
 const money = value => `Rs.${Number(value || 0).toFixed(2)}`;
@@ -22,6 +23,7 @@ function Stat({ label, value, color }) {
 }
 
 export default function RecurringBills() {
+  const navigate = useNavigate();
   const [bills, setBills] = useState([]);
   const [form, setForm] = useState(initialForm);
   const [editId, setEditId] = useState(null);
@@ -112,7 +114,7 @@ export default function RecurringBills() {
     { header: 'Reminder', key: 'reminderEnabled', sortValue: bill => bill.reminderEnabled ? 1 : 0, render: bill => bill.reminderEnabled ? 'Enabled' : 'Disabled' },
     { header: 'Status', key: 'status' },
     { header: 'Actions', key: 'actions', render: bill => <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-      {bill.status === 'Active' && <button type="button" onClick={() => openPayment(bill)} style={{ border: 0, background: 'none', color: '#0f766e', cursor: 'pointer', fontWeight: 800 }}>Pay</button>}
+      {bill.status === 'Active' && <button type="button" onClick={() => navigate('/payments', { state: { voucherType: 'MONTHLY_BILL_PAYMENT', recurringBillId: bill.id } })} style={{ border: 0, background: 'none', color: '#0f766e', cursor: 'pointer', fontWeight: 800 }}>Pay by Voucher</button>}
       <button type="button" onClick={() => setHistoryBillId(historyBillId === bill.id ? null : bill.id)} style={{ border: 0, background: 'none', color: '#7c3aed', cursor: 'pointer', fontWeight: 800 }}>History ({bill.payments?.length || 0})</button>
       <button type="button" onClick={() => editBill(bill)} style={{ border: 0, background: 'none', color: '#2563eb', cursor: 'pointer', fontWeight: 800 }}>Edit</button>
       <button type="button" onClick={() => deleteBill(bill)} style={{ border: 0, background: 'none', color: '#dc2626', cursor: 'pointer', fontWeight: 800 }}>Delete</button>

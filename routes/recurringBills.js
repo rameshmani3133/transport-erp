@@ -107,47 +107,7 @@ router.put('/:id', async (req, res) => {
 });
 
 router.post('/:id/payments', async (req, res) => {
-  try {
-    const id = toRequiredInt(req.params.id, 'Recurring bill');
-    const bill = await prisma.recurringBill.findFirst({ where: withTenant(req, { id }) });
-    if (!bill) return res.status(404).json({ error: 'Recurring bill not found.' });
-
-    const paidDate = toRequiredDate(req.body.paidDate, 'Paid date');
-    const amount = req.body.amount === '' || req.body.amount == null ? toNumber(bill.amount) : toNumber(req.body.amount);
-    if (!(amount > 0)) return res.status(400).json({ error: 'Paid amount must be greater than zero.' });
-    const nextDueDate = nextMonthlyDate(bill.nextDueDate, bill.dueDay);
-    const status = bill.endDate && nextDueDate > bill.endDate ? 'Closed' : bill.status;
-
-    await prisma.$transaction(async tx => {
-      await tx.recurringBillPayment.create({
-        data: {
-          tenantKey: req.tenantKey,
-          recurringBillId: id,
-          dueDate: bill.nextDueDate,
-          paidDate,
-          amount,
-          paymentMode: text(req.body.paymentMode, null) || null,
-          referenceNumber: text(req.body.referenceNumber, null) || null,
-          remarks: text(req.body.remarks, null) || null
-        }
-      });
-      await tx.recurringBill.updateMany({
-        where: withTenant(req, { id }),
-        data: {
-          lastPaidDate: paidDate,
-          nextDueDate,
-          paymentStatus: status === 'Closed' ? 'Paid' : 'Due',
-          status
-        }
-      });
-    });
-
-    const updated = await prisma.recurringBill.findFirst({ where: withTenant(req, { id }), include: includePayments });
-    res.json(updated);
-  } catch (error) {
-    console.error('Recurring bill payment error:', error);
-    res.status(400).json({ error: error.message || 'Failed to record payment.' });
-  }
+  res.status(409).json({ error: 'Post monthly bill payments through Voucher Center so expense, tax, bank, payment history, and due dates stay synchronized.' });
 });
 
 router.delete('/:id', async (req, res) => {

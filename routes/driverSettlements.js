@@ -1,7 +1,7 @@
 ﻿const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 const { withTenant } = require('./tenant');
-const { ensureDriverAdvanceAccount, ensureStandardAccountingAccounts } = require('../lib/accountingAccounts');
+const { ensureDriverPayableAccount, ensureStandardAccountingAccounts } = require('../lib/accountingAccounts');
 const { toNumber, toInt, toRequiredInt, toDate } = require('../lib/coerce');
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -115,7 +115,7 @@ async function applyDriverSettlement(tx, req, settlementId, payload, settlementN
     }
 
     const driver = await tx.driver.findFirst({ where: withTenant(req, { id: driverId }) });
-    const driverAcc = driver ? await ensureDriverAdvanceAccount(tx, req, driver) : null;
+    const driverAcc = driver ? await ensureDriverPayableAccount(tx, req, driver) : null;
     if (driverAcc && totalDueToDriver > 0) {
         const standardAccounts = await ensureStandardAccountingAccounts(tx, req);
         const expenseAccount = standardAccounts['Driver Salary & Trip Expense'];
@@ -225,5 +225,4 @@ router.delete('/:id', async (req, res) => {
 });
 
 module.exports = router;
-
 

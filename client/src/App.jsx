@@ -260,7 +260,7 @@ export default function App() {
           <NavLink to="/billing" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Client Invoicing</NavLink>
           <NavLink to="/settlements" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Vendor Settlements</NavLink>
           <NavLink to="/driver-settlements" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Driver Trip Sheets</NavLink>
-          <NavLink to="/payments" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Payment Vouchers</NavLink>
+          <NavLink to="/payments" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Voucher Center</NavLink>
           <NavLink to="/ledger" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Ledger Dashboard</NavLink>
           <NavLink to="/loans" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Loan Tracking</NavLink>
           <NavLink to="/recurring-bills" className={({isActive}) => isActive ? 'nav-link active' : 'nav-link'}>Monthly Bills</NavLink>

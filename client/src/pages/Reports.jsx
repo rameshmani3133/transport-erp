@@ -47,14 +47,14 @@ function SortableReportTable({ rows, columns, title, tableTitle, exportExcel, pr
 
 export default function Reports() {
     const [activeTab, setActiveTab] = useState('summary');
-    const [filters, setFilters] = useState({ clientId: '', startDate: '', endDate: '', group: 'All', loanPaymentStatus: 'All', loanStatus: 'All' });
-    const [data, setData] = useState({ trips: [], invoices: [], settlements: [], accounts: [], vehicles: [], clients: [], payments: [], loans: [], loading: true });
+    const [filters, setFilters] = useState({ clientId: '', startDate: '', endDate: '', group: 'All', loanPaymentStatus: 'All', loanStatus: 'All', voucherType: 'All', voucherStatus: 'All' });
+    const [data, setData] = useState({ trips: [], invoices: [], settlements: [], accounts: [], vehicles: [], clients: [], payments: [], loans: [], vouchers: [], loading: true });
 
     useEffect(() => {
         const fetchAllData = async () => {
             try {
-                const [tRes, iRes, sRes, aRes, vRes, cRes, pRes, lRes] = await Promise.all([
-                    fetch('/api/trips'), fetch('/api/invoices'), fetch('/api/settlements'), fetch('/api/ledger/accounts'), fetch('/api/vehicles'), fetch('/api/companies'), fetch('/api/payments'), fetch('/api/loans')
+                const [tRes, iRes, sRes, aRes, vRes, cRes, pRes, lRes, voRes] = await Promise.all([
+                    fetch('/api/trips'), fetch('/api/invoices'), fetch('/api/settlements'), fetch('/api/ledger/accounts'), fetch('/api/vehicles'), fetch('/api/companies'), fetch('/api/payments'), fetch('/api/loans'), fetch('/api/vouchers')
                 ]);
                 setData({
                     trips: tRes.ok ? await tRes.json() : [],
@@ -65,6 +65,7 @@ export default function Reports() {
                     clients: cRes.ok ? await cRes.json() : [],
                     payments: pRes.ok ? await pRes.json() : [],
                     loans: lRes.ok ? await lRes.json() : [],
+                    vouchers: voRes.ok ? await voRes.json() : [],
                     loading: false
                 });
             } catch (error) {
@@ -97,6 +98,13 @@ export default function Reports() {
         if (filters.loanStatus !== 'All' && loan.status !== filters.loanStatus) return false;
         return true;
     }), [data.loans, filters]);
+    const filteredVouchers = useMemo(() => data.vouchers.filter(voucher => {
+        if (filters.startDate && new Date(voucher.date) < new Date(filters.startDate)) return false;
+        if (filters.endDate && new Date(voucher.date) > new Date(filters.endDate)) return false;
+        if (filters.voucherType !== 'All' && voucher.voucherType !== filters.voucherType) return false;
+        if (filters.voucherStatus !== 'All' && voucher.status !== filters.voucherStatus) return false;
+        return true;
+    }), [data.vouchers, filters]);
     const incomeAccounts = data.accounts.filter(a => a.accountType === 'Income');
     const expenseAccounts = data.accounts.filter(a => a.accountType === 'Expense');
     const debtorAccounts = data.accounts.filter(a => a.accountGroup?.includes('Sundry Debtors'));
@@ -212,28 +220,46 @@ export default function Reports() {
         { header: 'Loan Status', key: 'status', render: loan => loan.status, exportValue: loan => loan.status },
         { header: 'Remarks', key: 'remarks', render: loan => loan.remarks || '-', exportValue: loan => loan.remarks || '' }
     ];
+    const voucherCols = [
+        { header: 'Voucher', key: 'voucherNo', render: voucher => <strong>{voucher.voucherNo}</strong>, exportValue: voucher => voucher.voucherNo },
+        { header: 'Date', key: 'date', render: voucher => dateText(voucher.date), exportValue: voucher => dateText(voucher.date) },
+        { header: 'Type', key: 'voucherType', render: voucher => voucher.voucherType.replace(/_/g, ' '), exportValue: voucher => voucher.voucherType.replace(/_/g, ' ') },
+        { header: 'Debit Account(s)', key: 'debitAccounts', filterValue: voucher => voucher.lines?.filter(line => line.type === 'Dr').map(line => line.account?.accountName).join(', ') || '', render: voucher => voucher.lines?.filter(line => line.type === 'Dr').map(line => line.account?.accountName).join(', ') || '-', exportValue: voucher => voucher.lines?.filter(line => line.type === 'Dr').map(line => line.account?.accountName).join(', ') || '' },
+        { header: 'Credit Account(s)', key: 'creditAccounts', filterValue: voucher => voucher.lines?.filter(line => line.type === 'Cr').map(line => line.account?.accountName).join(', ') || '', render: voucher => voucher.lines?.filter(line => line.type === 'Cr').map(line => line.account?.accountName).join(', ') || '-', exportValue: voucher => voucher.lines?.filter(line => line.type === 'Cr').map(line => line.account?.accountName).join(', ') || '' },
+        { header: 'Amount', key: 'totalAmount', render: voucher => <strong>{money(voucher.totalAmount)}</strong>, exportValue: voucher => voucher.totalAmount },
+        { header: 'Mode', key: 'paymentMode', render: voucher => voucher.paymentMode || '-', exportValue: voucher => voucher.paymentMode || '' },
+        { header: 'Reference', key: 'referenceNo', render: voucher => voucher.referenceNo || '-', exportValue: voucher => voucher.referenceNo || '' },
+        { header: 'Narration', key: 'narration', render: voucher => voucher.narration, exportValue: voucher => voucher.narration },
+        { header: 'Remarks', key: 'remarks', render: voucher => voucher.remarks || '-', exportValue: voucher => voucher.remarks || '' },
+        { header: 'Status', key: 'status', exportValue: voucher => voucher.status }
+    ];
 
     return (
         <div style={{ padding: '22px', maxWidth: '1500px', margin: '0 auto', background: '#f8fafc', minHeight: '100vh' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: '16px', alignItems: 'center', marginBottom: '18px', flexWrap: 'wrap' }}>
                 <div><h2 style={{ margin: 0, color: '#0f172a' }}>Reports Dashboard</h2><p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '13px' }}>Ledger-backed finance, collections, trip margin, diesel mapping, and account audit.</p></div>
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>{['summary', 'trips', 'invoices', 'clients', 'loans', 'accounts'].map(tab => <button key={tab} onClick={() => setActiveTab(tab)} style={{ padding: '9px 14px', border: 0, borderRadius: '6px', cursor: 'pointer', fontWeight: 800, background: activeTab === tab ? '#0f172a' : 'white', color: activeTab === tab ? 'white' : '#475569' }}>{tab[0].toUpperCase() + tab.slice(1)}</button>)}</div>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>{['summary', 'trips', 'invoices', 'clients', 'loans', 'vouchers', 'accounts'].map(tab => <button key={tab} onClick={() => setActiveTab(tab)} style={{ padding: '9px 14px', border: 0, borderRadius: '6px', cursor: 'pointer', fontWeight: 800, background: activeTab === tab ? '#0f172a' : 'white', color: activeTab === tab ? 'white' : '#475569' }}>{tab[0].toUpperCase() + tab.slice(1)}</button>)}</div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '12px', marginBottom: '18px' }}>
                 <select value={filters.clientId} onChange={e => setFilters({ ...filters, clientId: e.target.value })} style={{ padding: '10px', border: '1px solid #cbd5e1', borderRadius: '6px' }}><option value="">All clients</option>{data.clients.map(c => <option key={c.id} value={c.id}>{c.companyName}</option>)}</select>
                 <input type="date" value={filters.startDate} onChange={e => setFilters({ ...filters, startDate: e.target.value })} style={{ padding: '10px', border: '1px solid #cbd5e1', borderRadius: '6px' }} />
                 <input type="date" value={filters.endDate} onChange={e => setFilters({ ...filters, endDate: e.target.value })} style={{ padding: '10px', border: '1px solid #cbd5e1', borderRadius: '6px' }} />
-                <button onClick={() => setFilters({ clientId: '', startDate: '', endDate: '', group: 'All', loanPaymentStatus: 'All', loanStatus: 'All' })} style={{ padding: '10px', border: '1px solid #cbd5e1', borderRadius: '6px', background: 'white', cursor: 'pointer', fontWeight: 800 }}>Clear</button>
+                <button onClick={() => setFilters({ clientId: '', startDate: '', endDate: '', group: 'All', loanPaymentStatus: 'All', loanStatus: 'All', voucherType: 'All', voucherStatus: 'All' })} style={{ padding: '10px', border: '1px solid #cbd5e1', borderRadius: '6px', background: 'white', cursor: 'pointer', fontWeight: 800 }}>Clear</button>
             </div>
             {activeTab === 'loans' && <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', margin: '-6px 0 14px' }}>
                 <select value={filters.loanPaymentStatus} onChange={e => setFilters({ ...filters, loanPaymentStatus: e.target.value })} style={{ padding: '9px', border: '1px solid #cbd5e1', borderRadius: '6px' }}><option value="All">All payment statuses</option><option value="Due">Due</option><option value="Paid">Paid</option><option value="Part Paid">Part Paid</option><option value="Overdue">Overdue</option><option value="Skipped">Skipped</option></select>
                 <select value={filters.loanStatus} onChange={e => setFilters({ ...filters, loanStatus: e.target.value })} style={{ padding: '9px', border: '1px solid #cbd5e1', borderRadius: '6px' }}><option value="All">All loan statuses</option><option value="Active">Active</option><option value="On Hold">On Hold</option><option value="Closed">Closed</option></select>
+            </div>}
+            {activeTab === 'vouchers' && <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', margin: '-6px 0 14px' }}>
+                <select value={filters.voucherType} onChange={e => setFilters({ ...filters, voucherType: e.target.value })} style={{ padding: '9px', border: '1px solid #cbd5e1', borderRadius: '6px' }}><option value="All">All voucher types</option>{[...new Set(data.vouchers.map(voucher => voucher.voucherType))].sort().map(type => <option key={type} value={type}>{type.replace(/_/g, ' ')}</option>)}</select>
+                <select value={filters.voucherStatus} onChange={e => setFilters({ ...filters, voucherStatus: e.target.value })} style={{ padding: '9px', border: '1px solid #cbd5e1', borderRadius: '6px' }}><option value="All">All voucher statuses</option><option value="Posted">Posted</option><option value="Reversed">Reversed</option></select>
             </div>}
             {activeTab === 'summary' && <><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '14px', marginBottom: '18px' }}><StatCard label="Ledger Revenue" value={money(revenue)} tone="#2563eb" sub="Income ledger balance" /><StatCard label="Ledger Expenses" value={money(expenses)} tone="#dc2626" sub="Expense ledger balance" /><StatCard label="Gross Profit" value={money(grossProfit)} tone={grossProfit >= 0 ? '#0f766e' : '#dc2626'} sub={`Margin ${pct(margin)}`} /><StatCard label="Receivables" value={money(receivables)} tone="#b45309" sub="Open client ledger balance" /><StatCard label="Payables" value={money(payables)} tone="#7c3aed" sub="Vendor and pump creditors" /><StatCard label="Loan Outstanding" value={money(loanOutstanding)} tone="#9333ea" sub={`${dueLoans.length} loans not marked paid`} /><StatCard label="Monthly EMI" value={money(loanMonthlyEmi)} tone="#0f766e" sub="Active loan cash outflow" /><StatCard label="Diesel Control" value={money(dieselControl)} tone="#0f766e" sub="Client/vendor diesel subledgers" /><StatCard label="Output Tax" value={money(taxPayable)} tone="#475569" sub="Duties & Taxes" /></div><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '16px' }}><Section title="Collections Snapshot"><Bar label="Invoiced" value={invoiced} max={Math.max(invoiced, collected, 1)} color="#2563eb" /><Bar label="Collected incl. advances" value={collected} max={Math.max(invoiced, collected, 1)} color="#0f766e" /><Bar label="Unbilled trips" value={unbilled} max={Math.max(invoiced, unbilled, 1)} color="#b45309" /></Section><Section title="Loan Snapshot"><Bar label="Principal" value={loanPrincipal} max={Math.max(loanPrincipal, loanOutstanding, 1)} color="#7c3aed" /><Bar label="Outstanding" value={loanOutstanding} max={Math.max(loanPrincipal, loanOutstanding, 1)} color="#b45309" /><Bar label="Monthly EMI" value={loanMonthlyEmi} max={Math.max(loanPrincipal, loanMonthlyEmi, 1)} color="#0f766e" /></Section><Section title="Receivable Aging">{Object.entries(aging).map(([label, value]) => <Bar key={label} label={label} value={value} max={agingMax} color={label === '90+' ? '#dc2626' : '#0f766e'} />)}</Section><Section title="Top Client Outstanding">{clientRows.slice(0, 5).map(c => <Bar key={c.id} label={c.name} value={c.outstanding} max={Math.max(clientRows[0]?.outstanding || 1, 1)} color="#7c3aed" />)}</Section></div></>}
             {activeTab === 'trips' && <SortableReportTable rows={tripRows} columns={tripCols} title="Trip_Margin_Report" tableTitle="Trip Profitability" exportExcel={exportExcel} printReport={printReport} />}
             {activeTab === 'invoices' && <SortableReportTable rows={filteredInvoices} columns={invoiceCols} title="Invoice_Collections_Report" tableTitle="Invoice Collections" exportExcel={exportExcel} printReport={printReport} />}
             {activeTab === 'clients' && <SortableReportTable rows={clientRows} columns={clientCols} title="Client_Performance_Report" tableTitle="Client Performance" exportExcel={exportExcel} printReport={printReport} />}
             {activeTab === 'loans' && <SortableReportTable rows={filteredLoans} columns={loanCols} title="Loan_Tracking_Report" tableTitle="Loan Tracking" exportExcel={exportExcel} printReport={printReport} />}
+            {activeTab === 'vouchers' && <SortableReportTable rows={filteredVouchers} columns={voucherCols} title="Voucher_Register_Report" tableTitle="Voucher Register" exportExcel={exportExcel} printReport={printReport} />}
             {activeTab === 'accounts' && <><div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}><select value={filters.group} onChange={e => setFilters({ ...filters, group: e.target.value })}><option value="All">All groups</option><option value="Sundry Debtors">Sundry Debtors</option><option value="Sundry Creditors">Sundry Creditors</option><option value="Cash/Bank">Cash/Bank</option><option value="Direct Income">Income</option><option value="Expense">Expense</option><option value="Duties & Taxes">Duties & Taxes</option><option value="Client Diesel">Client Diesel</option><option value="Vendor Diesel">Vendor Diesel</option></select></div><SortableReportTable rows={filteredAccounts} columns={accountCols} title="Ledger_Audit_Report" tableTitle="Ledger Account Audit" exportExcel={exportExcel} printReport={printReport} /></>}
         </div>
     );
