@@ -218,7 +218,7 @@ router.post('/', async (req, res) => {
 
             await buildInvoiceLedgerEntries(tx, req, invoice, selectedTrips, d, invoiceNo);
             return invoice;
-        });
+        }, { maxWait: 5000, timeout: 20000 });
         res.json(result);
     } catch (error) {
         console.error("Invoice Error:", error);
@@ -311,7 +311,7 @@ router.put('/:id', async (req, res) => {
             });
             await buildInvoiceLedgerEntries(tx, req, invoice, selectedTrips, d, invoice.invoiceNo);
             return invoice;
-        });
+        }, { maxWait: 5000, timeout: 20000 });
         res.json(result);
     } catch (error) {
         console.error("Invoice Update Error:", error);
