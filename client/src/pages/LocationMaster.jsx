@@ -159,7 +159,7 @@ export default function LocationMaster() {
           </div>
       </form>
 
-      <DataTable data={locations} columns={columns} title="Registered Billing Locations" recycleBinType="billingLocations" onRecycleChanged={fetchData} />
+      <DataTable data={locations} columns={columns} title="Registered Billing Locations" recycleBinType="billingLocations" onRecycleChanged={fetchData} onNavigateRecord={handleEdit} activeRecordId={editId} />
     </div>
   );
 }

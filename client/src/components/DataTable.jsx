@@ -9,12 +9,15 @@ const Icons = {
     Sort: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>
 };
 
-export default function DataTable({ data, columns, title = "Records", enableColumnFilters = false, onFilteredDataChange, recycleBinType, onRecycleChanged }) {
+export default function DataTable({ data, columns, title = "Records", enableColumnFilters = false, onFilteredDataChange, recycleBinType, onRecycleChanged, onNavigateRecord, activeRecordId, recordIdKey = 'id' }) {
     const [search, setSearch] = useState('');
     const [columnFilters, setColumnFilters] = useState({});
     const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
     const [currentPage, setCurrentPage] = useState(1);
     const [recycleOpen, setRecycleOpen] = useState(false);
+    const [queryId, setQueryId] = useState('');
+    const [selectedRecordId, setSelectedRecordId] = useState(activeRecordId ?? null);
+    const [queryMessage, setQueryMessage] = useState('');
     const rowsPerPage = 10;
 
     // Helper to get nested object values (e.g., 'company.companyName')
@@ -111,6 +114,46 @@ export default function DataTable({ data, columns, title = "Records", enableColu
     // Pagination Logic
     const totalPages = Math.ceil(processedData.length / rowsPerPage) || 1;
     const currentData = processedData.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
+    const activeId = activeRecordId ?? selectedRecordId;
+    const activeIndex = processedData.findIndex(row => String(getNestedValue(row, recordIdKey)) === String(activeId));
+
+    useEffect(() => {
+        if (activeRecordId == null) return;
+        setSelectedRecordId(activeRecordId);
+    }, [activeRecordId]);
+
+    useEffect(() => {
+        if (currentPage > totalPages) setCurrentPage(totalPages);
+    }, [currentPage, totalPages]);
+
+    const navigateToRecord = (row) => {
+        if (!row) return;
+        const recordId = getNestedValue(row, recordIdKey);
+        const index = processedData.findIndex(item => String(getNestedValue(item, recordIdKey)) === String(recordId));
+        setSelectedRecordId(recordId);
+        setQueryId(String(recordId ?? ''));
+        setQueryMessage(`${index + 1} of ${processedData.length} filtered records`);
+        if (index >= 0) setCurrentPage(Math.floor(index / rowsPerPage) + 1);
+        onNavigateRecord?.(row, { index, total: processedData.length, filteredData: processedData });
+        if (onNavigateRecord) setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 0);
+    };
+
+    const queryRecord = () => {
+        const wanted = queryId.trim();
+        if (!wanted) return setQueryMessage('Enter a record ID.');
+        const row = processedData.find(item => String(getNestedValue(item, recordIdKey)) === wanted);
+        if (!row) return setQueryMessage(`ID ${wanted} is not in the current filtered results.`);
+        navigateToRecord(row);
+    };
+
+    const moveRecord = (direction) => {
+        if (!processedData.length) return;
+        const nextIndex = activeIndex < 0
+            ? (direction > 0 ? 0 : processedData.length - 1)
+            : activeIndex + direction;
+        if (nextIndex < 0 || nextIndex >= processedData.length) return;
+        navigateToRecord(processedData[nextIndex]);
+    };
 
     return (
         <div style={{ backgroundColor: 'white', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', overflow: 'hidden' }}>
@@ -119,6 +162,22 @@ export default function DataTable({ data, columns, title = "Records", enableColu
             <div style={{ padding: '20px', backgroundColor: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
                 <h3 style={{ margin: 0, color: '#334155' }}>{title} ({processedData.length})</h3>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                        <input
+                            type="text"
+                            inputMode="numeric"
+                            aria-label={`Query ${title} by ID`}
+                            placeholder="Record ID"
+                            value={queryId}
+                            onChange={(event) => { setQueryId(event.target.value); setQueryMessage(''); }}
+                            onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); queryRecord(); } }}
+                            style={{ width: '105px', padding: '8px 9px', border: '1px solid #cbd5e1', borderRadius: '6px', fontSize: '13px' }}
+                        />
+                        <button type="button" onClick={queryRecord} style={{ padding: '8px 10px', border: '1px solid #2563eb', borderRadius: '6px', background: 'white', color: '#2563eb', cursor: 'pointer', fontWeight: 700 }}>Go</button>
+                        <button type="button" onClick={() => moveRecord(-1)} disabled={!processedData.length || activeIndex === 0} style={{ padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: '6px', background: 'white', cursor: !processedData.length || activeIndex === 0 ? 'not-allowed' : 'pointer' }}>Previous record</button>
+                        <button type="button" onClick={() => moveRecord(1)} disabled={!processedData.length || activeIndex === processedData.length - 1} style={{ padding: '8px 10px', border: '1px solid #cbd5e1', borderRadius: '6px', background: 'white', cursor: !processedData.length || activeIndex === processedData.length - 1 ? 'not-allowed' : 'pointer' }}>Next record</button>
+                        {queryMessage && <span style={{ fontSize: '12px', color: queryMessage.includes('not in') || queryMessage.includes('Enter') ? '#dc2626' : '#475569' }}>{queryMessage}</span>}
+                    </div>
                     {recycleBinType && (
                         <button type="button" onClick={() => setRecycleOpen(true)} style={{ padding: '8px 10px', border: '1px solid #dc2626', borderRadius: '6px', background: 'white', color: '#dc2626', cursor: 'pointer', fontWeight: 700 }}>
                             Recycle Bin
@@ -183,7 +242,7 @@ export default function DataTable({ data, columns, title = "Records", enableColu
                     </thead>
                     <tbody>
                         {currentData.map((row, idx) => (
-                            <tr key={row.id || idx} style={{ borderBottom: '1px solid #f1f5f9' }} onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'} onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}>
+                            <tr key={getNestedValue(row, recordIdKey) || idx} style={{ borderBottom: '1px solid #f1f5f9', backgroundColor: String(getNestedValue(row, recordIdKey)) === String(activeId) ? '#dbeafe' : 'transparent' }} onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'} onMouseOut={(e) => e.currentTarget.style.backgroundColor = String(getNestedValue(row, recordIdKey)) === String(activeId) ? '#dbeafe' : 'transparent'}>
                                 {columns.map((col, colIdx) => (
                                     <td key={colIdx} style={{ padding: '16px', fontSize: '14px', color: '#0f172a' }}>
                                         {col.render ? col.render(row) : getNestedValue(row, col.key)}

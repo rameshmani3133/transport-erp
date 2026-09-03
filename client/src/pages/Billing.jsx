@@ -867,7 +867,7 @@ export default function Billing() {
       </form>
       ) : <div style={{ padding: '30px', textAlign: 'center', color: '#64748b', backgroundColor: 'white', borderRadius: '8px', marginBottom: '40px' }}>Select a client and invoice type to open its form.</div>}
 
-      <DataTable data={invoices} columns={columns} title="Invoice History" recycleBinType="invoices" onRecycleChanged={fetchData} />
+      <DataTable data={invoices} columns={columns} title="Invoice History" recycleBinType="invoices" onRecycleChanged={fetchData} onNavigateRecord={handleEdit} activeRecordId={editId} />
     </div>
   );
 }

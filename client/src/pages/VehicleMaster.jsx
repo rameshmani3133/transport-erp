@@ -271,7 +271,7 @@ export default function VehicleMaster() {
                 </div>
             </form>
 
-            <DataTable data={vehicles} columns={columns} title="Vehicle Directory" recycleBinType="vehicles" onRecycleChanged={fetchData} />
+            <DataTable data={vehicles} columns={columns} title="Vehicle Directory" recycleBinType="vehicles" onRecycleChanged={fetchData} onNavigateRecord={handleEdit} activeRecordId={editId} />
         </div>
     );
 }

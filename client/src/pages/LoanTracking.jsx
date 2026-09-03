@@ -204,7 +204,7 @@ export default function LoanTracking() {
           <button type="submit" style={{ padding: '10px 18px', border: 0, borderRadius: '6px', background: '#2563eb', color: 'white', fontWeight: 800, cursor: 'pointer' }}>{editId ? 'Update Loan' : 'Save Loan'}</button>
         </div>
       </form>
-      <DataTable data={loans} columns={columns} title="Loan Register" enableColumnFilters recycleBinType="loans" onRecycleChanged={loadData} />
+      <DataTable data={loans} columns={columns} title="Loan Register" enableColumnFilters recycleBinType="loans" onRecycleChanged={loadData} onNavigateRecord={editLoan} activeRecordId={editId} />
     </div>
   );
 }

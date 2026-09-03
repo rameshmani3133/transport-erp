@@ -165,7 +165,7 @@ export default function DieselManagement() {
                 </div>
             </form>
             
-            <DataTable data={diesels} columns={columns} title="Diesel Log History" recycleBinType="dieselEntries" onRecycleChanged={fetchData} />
+            <DataTable data={diesels} columns={columns} title="Diesel Log History" recycleBinType="dieselEntries" onRecycleChanged={fetchData} onNavigateRecord={handleEdit} activeRecordId={editId} />
         </div>
     );
 }

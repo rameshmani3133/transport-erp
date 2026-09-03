@@ -140,7 +140,7 @@ export default function ClientMaster() {
           </div>
       </form>
 
-      <DataTable data={companies} columns={columns} title="Registered Companies" recycleBinType="clientCompanies" onRecycleChanged={fetchData} />
+      <DataTable data={companies} columns={columns} title="Registered Companies" recycleBinType="clientCompanies" onRecycleChanged={fetchData} onNavigateRecord={handleEdit} activeRecordId={editId} />
     </div>
   );
 }

@@ -102,7 +102,7 @@ export default function RouteMaster() {
               {editId ? 'Update Route' : 'Save Route'}
           </button>
       </form>
-      <DataTable data={routes} columns={columns} recycleBinType="routes" onRecycleChanged={fetchData} />
+      <DataTable data={routes} columns={columns} recycleBinType="routes" onRecycleChanged={fetchData} onNavigateRecord={handleEdit} activeRecordId={editId} />
     </div>
   );
 }

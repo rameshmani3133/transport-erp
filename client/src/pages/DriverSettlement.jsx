@@ -322,7 +322,7 @@ export default function DriverSettlement() {
                 </div>
             </form>
 
-            <DataTable data={settlements} columns={columns} title="Settled Payroll Batches" recycleBinType="driverSettlements" onRecycleChanged={fetchData} />
+            <DataTable data={settlements} columns={columns} title="Settled Payroll Batches" recycleBinType="driverSettlements" onRecycleChanged={fetchData} onNavigateRecord={handleEdit} activeRecordId={editId} />
         </div>
     );
 }
