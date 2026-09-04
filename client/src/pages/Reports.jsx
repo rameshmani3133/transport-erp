@@ -31,6 +31,33 @@ const Bar = ({ label, value, max, color }) => (
     </div>
 );
 
+function ExcelMultiFilter({ label, options, selected, onChange }) {
+    const [search, setSearch] = useState('');
+    const shown = options.filter(option => String(option || '').toLowerCase().includes(search.trim().toLowerCase()));
+    const selectedSet = new Set(selected.map(String));
+    const toggle = option => {
+        const value = String(option);
+        onChange(selectedSet.has(value) ? selected.filter(item => String(item) !== value) : [...selected, value]);
+    };
+    return (
+        <details style={{ position: 'relative', minWidth: 0 }}>
+            <summary style={{ listStyle: 'none', padding: '9px 10px', border: `1px solid ${selected.length ? '#2563eb' : '#cbd5e1'}`, borderRadius: '6px', background: selected.length ? '#eff6ff' : 'white', cursor: 'pointer', fontSize: '12px', fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {label}: {selected.length ? `${selected.length} selected` : 'All'} ▾
+            </summary>
+            <div style={{ position: 'absolute', zIndex: 30, top: '42px', left: 0, width: '260px', maxWidth: '85vw', padding: '10px', border: '1px solid #cbd5e1', borderRadius: '8px', background: 'white', boxShadow: '0 12px 30px rgba(15,23,42,.2)' }}>
+                <input value={search} onChange={event => setSearch(event.target.value)} placeholder={`Search ${label.toLowerCase()}...`} style={{ width: '100%', padding: '8px', border: '1px solid #cbd5e1', borderRadius: '5px', marginBottom: '8px' }} />
+                <div style={{ display: 'flex', gap: '6px', marginBottom: '7px' }}>
+                    <button type="button" onClick={() => onChange(options.map(String))}>Select all</button>
+                    <button type="button" onClick={() => onChange([])}>Clear</button>
+                </div>
+                <div style={{ maxHeight: '220px', overflowY: 'auto', borderTop: '1px solid #e2e8f0' }}>
+                    {shown.length ? shown.map(option => <label key={String(option)} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 2px', fontSize: '12px' }}><input type="checkbox" checked={selectedSet.has(String(option))} onChange={() => toggle(option)} /><span>{option || '(Blank)'}</span></label>) : <div style={{ padding: '10px 2px', color: '#64748b', fontSize: '12px' }}>No matching values</div>}
+                </div>
+            </div>
+        </details>
+    );
+}
+
 function SortableReportTable({ rows, columns, title, tableTitle, exportExcel, exportCsv, printReport, defaultVisibleKeys }) {
     const [processedRows, setProcessedRows] = useState(rows);
     const columnSignature = columns.map(column => column.key).join('|');
@@ -89,6 +116,7 @@ export default function Reports() {
     const [activeTab, setActiveTab] = useState('summary');
     const [tripReportView, setTripReportView] = useState('vendor');
     const [filters, setFilters] = useState({ clientId: '', startDate: '', endDate: '', group: 'All', loanPaymentStatus: 'All', loanStatus: 'All', voucherType: 'All', voucherStatus: 'All', vehicleId: '', ownershipType: 'All', partyName: '', tripStatus: 'All', invoiceState: 'All', settlementState: 'All', fromLocation: '', toLocation: '' });
+    const [tripFilters, setTripFilters] = useState({ vehicleNo: [], ownershipType: [], partyName: [], fromLocation: [], toLocation: [], tripStatus: [], invoiceState: [], settlementState: [] });
     const [data, setData] = useState({ trips: [], tripReportRows: [], invoices: [], settlements: [], accounts: [], vehicles: [], clients: [], payments: [], loans: [], vouchers: [], loading: true });
 
     useEffect(() => {
@@ -126,27 +154,25 @@ export default function Reports() {
         return true;
     }), [data.trips, filters]);
 
-    const detailedTripRows = useMemo(() => data.tripReportRows.map(row => ({
+    const tripRowsForView = useMemo(() => data.tripReportRows.map(row => ({
         ...row,
-        ...(row.views?.[tripReportView] || {})
+        ...(row.views?.[tripReportView] || {}),
+        invoiceState: row.invoiceNo ? 'Billed' : 'Unbilled',
+        settlementState: row.settlementNo ? 'Settled' : 'Unsettled'
     })).filter(row => {
         if (filters.clientId && String(row.clientId) !== String(filters.clientId)) return false;
         if (filters.startDate && String(row.date).slice(0, 10) < filters.startDate) return false;
         if (filters.endDate && String(row.date).slice(0, 10) > filters.endDate) return false;
-        if (filters.vehicleId && String(row.vehicleId) !== String(filters.vehicleId)) return false;
-        if (filters.ownershipType !== 'All' && row.ownershipType !== filters.ownershipType) return false;
-        if (filters.partyName && !String(row.partyName || '').toLowerCase().includes(filters.partyName.toLowerCase())) return false;
-        if (filters.fromLocation && !String(row.fromLocation || '').toLowerCase().includes(filters.fromLocation.toLowerCase())) return false;
-        if (filters.toLocation && !String(row.toLocation || '').toLowerCase().includes(filters.toLocation.toLowerCase())) return false;
-        if (filters.tripStatus !== 'All' && row.tripStatus !== filters.tripStatus) return false;
-        if (filters.invoiceState === 'Billed' && !row.invoiceNo) return false;
-        if (filters.invoiceState === 'Unbilled' && row.invoiceNo) return false;
-        if (filters.settlementState === 'Settled' && !row.settlementNo) return false;
-        if (filters.settlementState === 'Unsettled' && row.settlementNo) return false;
         if (tripReportView === 'vendor' && row.ownershipType !== 'Market') return false;
         if (tripReportView === 'own' && row.ownershipType === 'Market') return false;
         return true;
-    }), [data.tripReportRows, filters, tripReportView]);
+    }), [data.tripReportRows, filters.clientId, filters.startDate, filters.endDate, tripReportView]);
+
+    const tripFilterKeys = ['vehicleNo', 'ownershipType', 'partyName', 'fromLocation', 'toLocation', 'tripStatus', 'invoiceState', 'settlementState'];
+    const matchesTripSelections = (row, exceptKey = '') => tripFilterKeys.every(key => key === exceptKey || !tripFilters[key].length || tripFilters[key].includes(String(row[key] ?? '')));
+    const detailedTripRows = useMemo(() => tripRowsForView.filter(row => matchesTripSelections(row)), [tripRowsForView, tripFilters]);
+    const tripFilterOptions = useMemo(() => Object.fromEntries(tripFilterKeys.map(key => [key, [...new Set(tripRowsForView.filter(row => matchesTripSelections(row, key)).map(row => String(row[key] ?? '')))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))])), [tripRowsForView, tripFilters]);
+    const updateTripFilter = (key, values) => setTripFilters(previous => ({ ...previous, [key]: values }));
 
     const filteredInvoices = useMemo(() => data.invoices.filter(inv => {
         if (filters.startDate && new Date(inv.date) < new Date(filters.startDate)) return false;
@@ -335,18 +361,18 @@ export default function Reports() {
                 <select value={filters.clientId} onChange={e => setFilters({ ...filters, clientId: e.target.value })} style={{ padding: '10px', border: '1px solid #cbd5e1', borderRadius: '6px' }}><option value="">All clients</option>{data.clients.map(c => <option key={c.id} value={c.id}>{c.companyName}</option>)}</select>
                 <input type="date" value={filters.startDate} onChange={e => setFilters({ ...filters, startDate: e.target.value })} style={{ padding: '10px', border: '1px solid #cbd5e1', borderRadius: '6px' }} />
                 <input type="date" value={filters.endDate} onChange={e => setFilters({ ...filters, endDate: e.target.value })} style={{ padding: '10px', border: '1px solid #cbd5e1', borderRadius: '6px' }} />
-                <button onClick={() => setFilters({ clientId: '', startDate: '', endDate: '', group: 'All', loanPaymentStatus: 'All', loanStatus: 'All', voucherType: 'All', voucherStatus: 'All', vehicleId: '', ownershipType: 'All', partyName: '', tripStatus: 'All', invoiceState: 'All', settlementState: 'All', fromLocation: '', toLocation: '' })} style={{ padding: '10px', border: '1px solid #cbd5e1', borderRadius: '6px', background: 'white', cursor: 'pointer', fontWeight: 800 }}>Clear</button>
+                <button onClick={() => { setFilters({ clientId: '', startDate: '', endDate: '', group: 'All', loanPaymentStatus: 'All', loanStatus: 'All', voucherType: 'All', voucherStatus: 'All', vehicleId: '', ownershipType: 'All', partyName: '', tripStatus: 'All', invoiceState: 'All', settlementState: 'All', fromLocation: '', toLocation: '' }); setTripFilters({ vehicleNo: [], ownershipType: [], partyName: [], fromLocation: [], toLocation: [], tripStatus: [], invoiceState: [], settlementState: [] }); }} style={{ padding: '10px', border: '1px solid #cbd5e1', borderRadius: '6px', background: 'white', cursor: 'pointer', fontWeight: 800 }}>Clear</button>
             </div>
             {activeTab === 'trips' && <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(175px, 1fr))', gap: '10px', margin: '-6px 0 14px', padding: '12px', background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
                 <select value={tripReportView} onChange={e => setTripReportView(e.target.value)}><option value="vendor">Vendor / Market Settlement</option><option value="client">Client Trip Statement</option><option value="own">Own Vehicle Performance</option></select>
-                <select value={filters.vehicleId} onChange={e => setFilters({ ...filters, vehicleId: e.target.value })}><option value="">All vehicles</option>{data.vehicles.map(vehicle => <option key={vehicle.id} value={vehicle.id}>{vehicle.regNo}</option>)}</select>
-                <select value={filters.ownershipType} onChange={e => setFilters({ ...filters, ownershipType: e.target.value })}><option value="All">All ownerships</option>{[...new Set(data.vehicles.map(vehicle => vehicle.ownershipType).filter(Boolean))].sort().map(type => <option key={type} value={type}>{type}</option>)}</select>
-                <input value={filters.partyName} onChange={e => setFilters({ ...filters, partyName: e.target.value })} placeholder="Party / vendor / driver" />
-                <input value={filters.fromLocation} onChange={e => setFilters({ ...filters, fromLocation: e.target.value })} placeholder="From location" />
-                <input value={filters.toLocation} onChange={e => setFilters({ ...filters, toLocation: e.target.value })} placeholder="To location" />
-                <select value={filters.tripStatus} onChange={e => setFilters({ ...filters, tripStatus: e.target.value })}><option value="All">All trip statuses</option><option value="In-Transit">In-Transit</option><option value="Completed">Completed</option><option value="Cancelled">Cancelled</option></select>
-                <select value={filters.invoiceState} onChange={e => setFilters({ ...filters, invoiceState: e.target.value })}><option value="All">Billed + unbilled</option><option value="Billed">Billed only</option><option value="Unbilled">Unbilled only</option></select>
-                <select value={filters.settlementState} onChange={e => setFilters({ ...filters, settlementState: e.target.value })}><option value="All">Settled + unsettled</option><option value="Settled">Settled only</option><option value="Unsettled">Unsettled only</option></select>
+                <ExcelMultiFilter label="Vehicle" options={tripFilterOptions.vehicleNo} selected={tripFilters.vehicleNo} onChange={values => updateTripFilter('vehicleNo', values)} />
+                <ExcelMultiFilter label="Ownership" options={tripFilterOptions.ownershipType} selected={tripFilters.ownershipType} onChange={values => updateTripFilter('ownershipType', values)} />
+                <ExcelMultiFilter label={tripReportView === 'own' ? 'Driver / Party' : 'Party'} options={tripFilterOptions.partyName} selected={tripFilters.partyName} onChange={values => updateTripFilter('partyName', values)} />
+                <ExcelMultiFilter label="From" options={tripFilterOptions.fromLocation} selected={tripFilters.fromLocation} onChange={values => updateTripFilter('fromLocation', values)} />
+                <ExcelMultiFilter label="To" options={tripFilterOptions.toLocation} selected={tripFilters.toLocation} onChange={values => updateTripFilter('toLocation', values)} />
+                <ExcelMultiFilter label="Trip Status" options={tripFilterOptions.tripStatus} selected={tripFilters.tripStatus} onChange={values => updateTripFilter('tripStatus', values)} />
+                <ExcelMultiFilter label="Billing" options={tripFilterOptions.invoiceState} selected={tripFilters.invoiceState} onChange={values => updateTripFilter('invoiceState', values)} />
+                <ExcelMultiFilter label="Settlement" options={tripFilterOptions.settlementState} selected={tripFilters.settlementState} onChange={values => updateTripFilter('settlementState', values)} />
             </div>}
             {activeTab === 'loans' && <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', margin: '-6px 0 14px' }}>
                 <select value={filters.loanPaymentStatus} onChange={e => setFilters({ ...filters, loanPaymentStatus: e.target.value })} style={{ padding: '9px', border: '1px solid #cbd5e1', borderRadius: '6px' }}><option value="All">All payment statuses</option><option value="Due">Due</option><option value="Paid">Paid</option><option value="Part Paid">Part Paid</option><option value="Overdue">Overdue</option><option value="Skipped">Skipped</option></select>
