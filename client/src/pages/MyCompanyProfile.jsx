@@ -15,9 +15,13 @@ function normalizeEmails(value) {
 }
 
 export default function MyCompanyProfile({ isSuperAdmin = false }) {
+    const defaultRule48Declaration = 'I/We hereby declare that though our aggregate turnover in any preceding financial year from 2017-18 onwards is more than the aggregate turnover notified under sub-rule (4) of Rule 48, we are not required to prepare an invoice in terms of the provisions of the said sub-rule.';
+    const defaultGtaDeclaration = 'I/We have taken registration under the CGST Act, 2017 and have exercised the option to pay tax on services of GTA in relation to transport of goods supplied by us under forward charge.';
     const initialState = {
         tenantKey: '', companyName: '', address: '', gstNumber: '', panNumber: '',
-        bankName: '', accountNumber: '', ifscCode: '', signatoryRole: 'Authorized Signatory',
+        bankName: '', accountNumber: '', ifscCode: '', bankBranch: '', beneficiaryName: '',
+        phoneNumber: '', email: '', signatoryRole: 'Authorized Signatory', signatoryName: '',
+        rule48Declaration: defaultRule48Declaration, gtaDeclaration: defaultGtaDeclaration,
         reminderEmails: []
     };
     
@@ -118,6 +122,8 @@ export default function MyCompanyProfile({ isSuperAdmin = false }) {
                     <FormGroup label="Logistics Company Name" name="companyName" value={formData.companyName} onChange={handleChange} required />
                     <FormGroup label="GSTIN Number" name="gstNumber" value={formData.gstNumber} onChange={handleChange} />
                     <FormGroup label="PAN Number" name="panNumber" value={formData.panNumber} onChange={handleChange} />
+                    <FormGroup label="Phone Number" name="phoneNumber" value={formData.phoneNumber} onChange={handleChange} />
+                    <FormGroup label="Business Email" name="email" value={formData.email} onChange={handleChange} />
                     <div style={{ gridColumn: '1 / -1' }}>
                         <FormGroup label="Full Registered Address" name="address" value={formData.address} onChange={handleChange} multiline />
                     </div>
@@ -128,6 +134,8 @@ export default function MyCompanyProfile({ isSuperAdmin = false }) {
                     <FormGroup label="Bank Name" name="bankName" value={formData.bankName} onChange={handleChange} />
                     <FormGroup label="Account Number" name="accountNumber" value={formData.accountNumber} onChange={handleChange} />
                     <FormGroup label="IFSC Code" name="ifscCode" value={formData.ifscCode} onChange={handleChange} />
+                    <FormGroup label="Bank Branch" name="bankBranch" value={formData.bankBranch} onChange={handleChange} />
+                    <FormGroup label="Beneficiary Name" name="beneficiaryName" value={formData.beneficiaryName} onChange={handleChange} />
                 </div>
 
                 <h3 style={{ fontSize: '14px', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px', marginBottom: '15px' }}>3. Invoice Signature</h3>
@@ -141,9 +149,16 @@ export default function MyCompanyProfile({ isSuperAdmin = false }) {
                             <option value="Director">Director</option>
                         </select>
                     </div>
+                    <FormGroup label="Signatory Name" name="signatoryName" value={formData.signatoryName} onChange={handleChange} />
                 </div>
 
-                <h3 style={{ fontSize: '14px', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px', marginBottom: '15px' }}>4. Reminder Emails</h3>
+                <h3 style={{ fontSize: '14px', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px', marginBottom: '15px' }}>4. Invoice Declarations</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '25px' }}>
+                    <FormGroup label="Rule 48(4) Declaration" name="rule48Declaration" value={formData.rule48Declaration} onChange={handleChange} multiline />
+                    <FormGroup label="GTA Forward-Charge Declaration" name="gtaDeclaration" value={formData.gtaDeclaration} onChange={handleChange} multiline />
+                </div>
+
+                <h3 style={{ fontSize: '14px', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px', marginBottom: '15px' }}>5. Reminder Emails</h3>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '25px' }}>
                     <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                         <input

@@ -57,6 +57,8 @@ const gstLocation = (gstNumber) => {
   const stateCode = String(gstNumber || '').trim().slice(0, 2);
   return { stateCode: GST_STATE_NAMES[stateCode] ? stateCode : '-', stateName: GST_STATE_NAMES[stateCode] || '-' };
 };
+const isBpclFormat = format => ['BPCL INVOICE', 'LPG Bill'].includes(format);
+const isManualInvoiceFormat = format => format === 'IOCL INVOICE' || isBpclFormat(format);
 
 function amountInWords(value) {
   const numericValue = Math.max(num(value), 0);
@@ -235,8 +237,8 @@ export default function Billing() {
   const selectedLocation = locations.find(l => String(l.id) === String(formData.locationId));
   const selectedGstLocation = gstLocation(selectedLocation?.gstNumber);
   const isIocl = selectedLocation?.invoiceFormat === 'IOCL INVOICE';
-  const isLpg = selectedLocation?.invoiceFormat === 'LPG Bill';
-  const isManualTaxInvoice = isIocl || isLpg;
+  const isBpcl = isBpclFormat(selectedLocation?.invoiceFormat);
+  const isManualTaxInvoice = isIocl || isBpcl;
   const companyGstLocation = gstLocation(companyProfile.gstNumber);
   const clientLocations = locations.filter(location => String(location.companyId) === String(selectedClientId));
   const mappedClientAccount = selectedLocation
@@ -402,7 +404,7 @@ export default function Billing() {
 
   const handleExportPDF = async (invoice) => {
     const invoiceTrips = invoice.trips || [];
-    const isStandaloneTaxInvoice = ['IOCL INVOICE', 'LPG Bill'].includes(invoice.invoiceFormat);
+    const isStandaloneTaxInvoice = isManualInvoiceFormat(invoice.invoiceFormat);
     if (!isStandaloneTaxInvoice && !invoiceTrips.length) return alert('No invoice trips to print.');
 
     const printWindow = window.open('', '_blank');
@@ -431,10 +433,40 @@ export default function Billing() {
     const poMigo = invoice.poMigo || '';
     const statusRow = invoice.showStatus ? `<div class="meta-row"><strong>Status</strong><span>${escapeHtml(invoice.status || '-')}</span></div>` : '';
     if (isStandaloneTaxInvoice) {
+      const isBpclInvoice = isBpclFormat(invoice.invoiceFormat);
+      if (isBpclInvoice) {
+        const vehicleNumbers = String(invoice.vehicleNo || '').split(',').map(value => value.trim()).filter(Boolean);
+        const vehicleNumberHtml = vehicleNumbers.length ? `<div class="vehicles"><strong>Vehicle No:</strong><br>${vehicleNumbers.map(escapeHtml).join('<br>')}</div>` : '';
+        const taxRows = num(invoice.gstPercent) === 0
+          ? `<tr><td colspan="2" class="tax-label">GST 0%</td><td class="amount">0.00</td></tr>`
+          : invoice.gstType === 'CGST_SGST'
+            ? `<tr><td colspan="2" class="tax-label">CGST ${num(invoice.gstPercent) / 2}%</td><td class="amount">${num(invoice.cgst).toFixed(2)}</td></tr><tr><td colspan="2" class="tax-label">SGST ${num(invoice.gstPercent) / 2}%</td><td class="amount">${num(invoice.sgst).toFixed(2)}</td></tr>`
+            : `<tr><td colspan="2" class="tax-label">IGST ${num(invoice.gstPercent)}%</td><td class="amount">${num(invoice.igst).toFixed(2)}</td></tr>`;
+        const roundOffRow = invoice.showRoundOff !== false && invoiceRoundOff(invoice) !== 0
+          ? `<tr><td colspan="2" class="tax-label">Round Off</td><td class="amount">${invoiceRoundOff(invoice).toFixed(2)}</td></tr>`
+          : '';
+        const rule48Declaration = profile.rule48Declaration || 'I/We hereby declare that though our aggregate turnover in any preceding financial year from 2017-18 onwards is more than the aggregate turnover notified under sub-rule (4) of Rule 48, we are not required to prepare an invoice in terms of the provisions of the said sub-rule.';
+        const gtaDeclaration = profile.gtaDeclaration || invoice.declaration || 'I/We have taken registration under the CGST Act, 2017 and have exercised the option to pay tax on services of GTA in relation to transport of goods supplied by us under forward charge.';
+        printWindow.document.write(`
+          <html><head><title>${escapeHtml(invoice.invoiceNo)} - BPCL Invoice</title><style>
+            @page{size:A4 portrait;margin:8mm}*{box-sizing:border-box}body{margin:0;color:#111;font-family:"Times New Roman",serif;font-size:12px}.invoice{border:1.5px solid #111;width:100%;min-height:270mm}.row{border-bottom:1px solid #111}.title{text-align:center;font-weight:700;font-size:15px;padding:3px}.supplier{text-align:center;padding:4px 10px 6px}.supplier h1{font-size:22px;margin:0 0 2px;text-transform:uppercase}.supplier div{line-height:1.3}.reference{display:grid;grid-template-columns:1.1fr .9fr}.reference>div{padding:5px 8px;line-height:1.5}.reference>div+div{border-left:1px solid #111}.kv{display:grid;grid-template-columns:110px 1fr;gap:4px}.bill-to{padding:5px 8px;line-height:1.35;min-height:83px}.bill-to strong{display:block;font-size:13px}.items{width:100%;border-collapse:collapse;table-layout:fixed}.items th,.items td{border-right:1px solid #111;border-bottom:1px solid #111;padding:5px;vertical-align:top}.items th:last-child,.items td:last-child{border-right:0}.items th{text-align:center;font-size:13px}.center{text-align:center}.description{height:90px;font-size:13px}.vehicles{font-size:11px;margin-top:8px;line-height:1.25}.amount{text-align:right;vertical-align:bottom!important}.tax-label{font-weight:700}.total{font-size:14px;font-weight:700}.words{padding:5px 8px;min-height:59px}.words-title{font-weight:700}.words-value{padding:13px 38px 4px}.bottom{display:grid;grid-template-columns:1.1fr .9fr;border-bottom:1px solid #111}.bank,.signature{padding:6px 8px;min-height:112px;line-height:1.5}.signature{border-left:1px solid #111;font-weight:700}.signature-space{height:45px}.declarations{display:grid;grid-template-columns:1fr 1fr}.declarations>div{padding:6px 8px;min-height:120px;line-height:1.3;text-align:justify}.declarations>div+div{border-left:1px solid #111}
+          </style></head><body><div class="invoice">
+            <div class="title row">TAX INVOICE</div>
+            <div class="supplier row"><h1>${escapeHtml(supplierName)}</h1><div>${multilineAddressHtml(supplierAddress)}</div>${profile.phoneNumber ? `<div>Cell No: ${escapeHtml(profile.phoneNumber)}</div>` : ''}<div>${profile.email ? `E-mail: ${escapeHtml(profile.email)} &nbsp;&nbsp;` : ''}GST NO: ${escapeHtml(profile.gstNumber || '-')}</div></div>
+            <div class="reference row"><div><div class="kv"><strong>GST</strong><span>: ${escapeHtml(invoice.location?.gstNumber || '-')}</span></div><div class="kv"><strong>PAN</strong><span>: ${escapeHtml(invoice.location?.company?.panNumber || '-')}</span></div><div class="kv"><strong>S.No</strong><span>: ${escapeHtml(invoice.invoiceNo || '-')}</span></div></div><div><div class="kv"><strong>Vendor Code</strong><span>: ${escapeHtml(invoice.vendorCode || invoice.location?.company?.vendorCode || '-')}</span></div><div class="kv"><strong>Bill Date</strong><span>: ${escapeHtml(formatDate(invoice.date))}</span></div><div class="kv"><strong>Payment Date</strong><span>: ${escapeHtml(formatDate(invoice.dueDate))}</span></div></div></div>
+            <div class="bill-to row"><strong>Bill To</strong><b>${escapeHtml(clientName)}</b>${locationName && locationName !== '-' ? ` / ${escapeHtml(locationName)}` : ''}<br>${multilineAddressHtml(clientAddress)}<br><b>GST NO: ${escapeHtml(invoice.location?.gstNumber || '-')}</b></div>
+            <table class="items"><colgroup><col style="width:58%"><col style="width:14%"><col style="width:28%"></colgroup><thead><tr><th>Description of Goods</th><th>SAC Code</th><th>Amount</th></tr></thead><tbody><tr><td class="description">${escapeHtml(invoice.productService || 'Transport Charges')}${vehicleNumberHtml}</td><td class="center">${escapeHtml(invoice.sacCode || '-')}</td><td class="amount">${num(invoice.subTotal).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})}</td></tr>${taxRows}${roundOffRow}<tr class="total"><td colspan="2">Grand Total</td><td class="amount">${num(invoice.grandTotal).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2})}</td></tr></tbody></table>
+            <div class="words row"><div class="words-title">Amount Chargeable (in words)</div><div class="words-value">${escapeHtml(amountInWords(invoice.grandTotal))}.</div></div>
+            <div class="bottom"><div class="bank"><strong>Our Bank Details:-</strong><br><span class="kv"><b>Beneficiary Name</b><span>: ${escapeHtml(profile.beneficiaryName || supplierName)}</span></span><span class="kv"><b>Bank</b><span>: ${escapeHtml(profile.bankName || '-')}</span></span><span class="kv"><b>Account No</b><span>: ${escapeHtml(profile.accountNumber || '-')}</span></span><span class="kv"><b>Branch</b><span>: ${escapeHtml(profile.bankBranch || '-')}</span></span><span class="kv"><b>IFSC CODE</b><span>: ${escapeHtml(profile.ifscCode || '-')}</span></span></div><div class="signature">For ${escapeHtml(supplierName)}<div class="signature-space"></div>${escapeHtml(profile.signatoryRole || 'Authorized Signatory')}<br>${escapeHtml(profile.signatoryName || '')}</div></div>
+            <div class="declarations"><div>“${escapeHtml(rule48Declaration)}”</div><div>“${escapeHtml(gtaDeclaration)}”</div></div>
+          </div><script>window.onload=()=>{window.print();window.close()}</script></body></html>`);
+        printWindow.document.close();
+        return;
+      }
       const gstLabel = num(invoice.gstPercent) === 0 ? 'GST' : invoice.gstType === 'CGST_SGST' ? 'CGST + SGST' : 'IGST';
       const supplierState = gstLocation(profile.gstNumber);
       const receiverState = gstLocation(invoice.location?.gstNumber);
-      const formatTitle = invoice.invoiceFormat === 'LPG Bill' ? 'LPG Invoice' : 'IOCL Invoice';
+      const formatTitle = isBpclFormat(invoice.invoiceFormat) ? 'BPCL Invoice' : 'IOCL Invoice';
       const isIoclInvoice = invoice.invoiceFormat === 'IOCL INVOICE';
       const supplierAddressHtml = multilineAddressHtml(supplierAddress, isIoclInvoice);
       const receiverAddressHtml = multilineAddressHtml(clientAddress, isIoclInvoice);
@@ -779,7 +811,7 @@ export default function Billing() {
             <select value={quickLocation.invoiceFormat} onChange={event => setQuickLocation(previous => ({ ...previous, invoiceFormat: event.target.value }))} style={fieldStyle}>
               <option value="Standard">Standard Combined Trips</option>
               <option value="IOCL INVOICE">IOCL INVOICE</option>
-              <option value="LPG Bill">LPG Bill</option>
+              <option value="BPCL INVOICE">BPCL INVOICE</option>
               <option value="Detailed">Detailed</option>
             </select>
             <textarea value={quickLocation.address} onChange={event => setQuickLocation(previous => ({ ...previous, address: event.target.value }))} placeholder="Bill-To address (use a new line for each address line)" rows={3} style={{ ...fieldStyle, resize: 'vertical' }} />
@@ -792,7 +824,7 @@ export default function Billing() {
       {selectedLocation ? (
       <form onSubmit={handleSubmit} style={{ backgroundColor: 'white', padding: '25px', borderRadius: '8px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', marginBottom: '40px' }}>
         <h3 style={{ fontSize: '16px', color: '#1d4ed8', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px', marginBottom: '15px' }}>
-          {isIocl ? 'IOCL Invoice Form' : isLpg ? 'LPG Invoice Form' : 'Standard Combined-Trips Invoice Form'}
+          {isIocl ? 'IOCL Invoice Form' : isBpcl ? 'BPCL Invoice Form' : 'Standard Combined-Trips Invoice Form'}
         </h3>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginBottom: '25px' }}>
@@ -846,12 +878,12 @@ export default function Billing() {
               </details>
             </Field>
             <Field label="Product / Service">
-              {isLpg ? (
+              {isBpcl ? (
                 <input
                   type="text"
                   value={formData.productService}
                   onChange={e => setFormData({ ...formData, productService: e.target.value })}
-                  placeholder="Enter LPG invoice description"
+                  placeholder="Enter BPCL invoice description"
                   required
                   style={fieldStyle}
                 />

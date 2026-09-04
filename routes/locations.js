@@ -6,6 +6,8 @@ const { toRequiredInt, text } = require('../lib/coerce');
 const router = express.Router();
 const prisma = new PrismaClient();
 
+const normalizeInvoiceFormat = value => value === 'LPG Bill' ? 'BPCL INVOICE' : (value || 'Standard');
+
 // GET ALL BILLING LOCATIONS (Includes Client Company details)
 router.get('/', async (req, res) => {
     try {
@@ -41,7 +43,7 @@ router.post('/', async (req, res) => {
                     address: req.body.address || null,
                     gstNumber: req.body.gstNumber || null,
                     stateOfficeCode: text(req.body.stateOfficeCode, null) || null,
-                    invoiceFormat: req.body.invoiceFormat || 'Standard',
+                    invoiceFormat: normalizeInvoiceFormat(req.body.invoiceFormat),
                     companyId
                 }
             });
@@ -67,7 +69,7 @@ router.put('/:id', async (req, res) => {
                     address: req.body.address || null,
                     gstNumber: req.body.gstNumber || null,
                     stateOfficeCode: text(req.body.stateOfficeCode, null) || null,
-                    invoiceFormat: req.body.invoiceFormat || 'Standard',
+                    invoiceFormat: normalizeInvoiceFormat(req.body.invoiceFormat),
                     companyId
                 }
             });

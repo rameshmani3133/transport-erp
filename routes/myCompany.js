@@ -61,6 +61,13 @@ router.post('/', async (req, res) => {
             bankName: text(req.body.bankName, null),
             accountNumber: text(req.body.accountNumber, null),
             ifscCode: text(req.body.ifscCode, null),
+            phoneNumber: text(req.body.phoneNumber, null),
+            email: text(req.body.email, null),
+            beneficiaryName: text(req.body.beneficiaryName, null),
+            bankBranch: text(req.body.bankBranch, null),
+            signatoryName: text(req.body.signatoryName, null),
+            rule48Declaration: text(req.body.rule48Declaration, null),
+            gtaDeclaration: text(req.body.gtaDeclaration, null),
             signatoryRole: text(req.body.signatoryRole, 'Authorized Signatory') || 'Authorized Signatory',
             reminderEmails: cleanEmails(req.body.reminderEmails)
         };
@@ -153,6 +160,13 @@ router.put('/profile/:id', async (req, res) => {
                 bankName: text(req.body.bankName, null),
                 accountNumber: text(req.body.accountNumber, null),
                 ifscCode: text(req.body.ifscCode, null),
+                phoneNumber: text(req.body.phoneNumber, null),
+                email: text(req.body.email, null),
+                beneficiaryName: text(req.body.beneficiaryName, null),
+                bankBranch: text(req.body.bankBranch, null),
+                signatoryName: text(req.body.signatoryName, null),
+                rule48Declaration: text(req.body.rule48Declaration, null),
+                gtaDeclaration: text(req.body.gtaDeclaration, null),
                 signatoryRole: text(req.body.signatoryRole, existing.signatoryRole || 'Authorized Signatory') || 'Authorized Signatory',
                 reminderEmails: cleanEmails(req.body.reminderEmails)
             }

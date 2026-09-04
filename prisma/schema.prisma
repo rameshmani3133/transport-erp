@@ -591,6 +591,13 @@ model MyCompanyProfile {
   bankName        String?
   accountNumber   String?
   ifscCode        String?
+  phoneNumber     String?
+  email           String?
+  beneficiaryName String?
+  bankBranch      String?
+  signatoryName   String?
+  rule48Declaration String? @db.Text
+  gtaDeclaration  String?   @db.Text
   signatoryRole   String? 
   reminderEmails  Json?
 }
