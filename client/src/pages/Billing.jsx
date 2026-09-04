@@ -138,6 +138,7 @@ export default function Billing() {
   const [trips, setTrips] = useState([]);
   const [accounts, setAccounts] = useState([]);
   const [vehicles, setVehicles] = useState([]);
+  const [companyProfile, setCompanyProfile] = useState({});
   const [selectedClientId, setSelectedClientId] = useState('');
   const [selectedTripIds, setSelectedTripIds] = useState([]);
   const [formData, setFormData] = useState(initialInvoice);
@@ -155,13 +156,14 @@ export default function Billing() {
 
   const fetchData = async () => {
     try {
-      const [invRes, locRes, tripRes, accRes, vehicleRes, companyRes] = await Promise.all([
+      const [invRes, locRes, tripRes, accRes, vehicleRes, companyRes, profileRes] = await Promise.all([
         fetch('/api/invoices'),
         fetch('/api/locations'),
         fetch('/api/trips'),
         fetch('/api/ledger/accounts'),
         fetch('/api/vehicles'),
-        fetch('/api/companies')
+        fetch('/api/companies'),
+        fetch('/api/my-company')
       ]);
       if (invRes.ok) setInvoices(await invRes.json());
       if (locRes.ok) setLocations(await locRes.json());
@@ -169,6 +171,7 @@ export default function Billing() {
       if (accRes.ok) setAccounts(await accRes.json());
       if (vehicleRes.ok) setVehicles(await vehicleRes.json());
       if (companyRes.ok) setCompanies(await companyRes.json());
+      if (profileRes.ok) setCompanyProfile(await profileRes.json());
     } catch (err) {
       console.error('Error fetching billing data:', err);
     }
@@ -231,6 +234,7 @@ export default function Billing() {
   const isIocl = selectedLocation?.invoiceFormat === 'IOCL INVOICE';
   const isLpg = selectedLocation?.invoiceFormat === 'LPG Bill';
   const isManualTaxInvoice = isIocl || isLpg;
+  const companyGstLocation = gstLocation(companyProfile.gstNumber);
   const clientLocations = locations.filter(location => String(location.companyId) === String(selectedClientId));
   const mappedClientAccount = selectedLocation
     ? accounts.find(a => String(a.clientId) === String(selectedLocation.companyId))
@@ -246,6 +250,18 @@ export default function Billing() {
       return { ...prev, clientAccountId: nextClientAccountId, incomeAccountId: nextIncomeAccountId };
     });
   }, [mappedClientAccount?.id, defaultIncomeAccount?.id]);
+
+  useEffect(() => {
+    if (num(gstPercent) <= 0) {
+      if (gstType !== 'NONE') setGstType('NONE');
+      return;
+    }
+    const companyCode = companyGstLocation.stateCode;
+    const billingCode = selectedGstLocation.stateCode;
+    if (companyCode === '-' || billingCode === '-') return;
+    const mappedType = companyCode === billingCode ? 'CGST_SGST' : 'IGST';
+    if (gstType !== mappedType) setGstType(mappedType);
+  }, [gstPercent, companyGstLocation.stateCode, selectedGstLocation.stateCode, gstType]);
 
   const displayTrips = useMemo(() => trips.filter(t => {
     if (editId) {
@@ -409,7 +425,7 @@ export default function Billing() {
     const poMigo = invoice.poMigo || '';
     const statusRow = invoice.showStatus ? `<div class="meta-row"><strong>Status</strong><span>${escapeHtml(invoice.status || '-')}</span></div>` : '';
     if (isStandaloneTaxInvoice) {
-      const gstLabel = invoice.gstType === 'CGST_SGST' ? 'CGST + SGST' : 'IGST';
+      const gstLabel = num(invoice.gstPercent) === 0 ? 'GST' : invoice.gstType === 'CGST_SGST' ? 'CGST + SGST' : 'IGST';
       const supplierStateCode = String(profile.gstNumber || '').slice(0, 2) || '-';
       const receiverState = gstLocation(invoice.location?.gstNumber);
       const formatTitle = invoice.invoiceFormat === 'LPG Bill' ? 'LPG Invoice' : 'IOCL Invoice';
@@ -434,7 +450,9 @@ export default function Billing() {
             <table class="items"><thead><tr><th style="width:12%">Slr No</th><th>Name of Product / Service</th><th style="width:18%">SAC</th><th style="width:24%">Total Amount (Rs.)</th></tr></thead><tbody>
               <tr><td class="center">1</td><td>${escapeHtml(invoice.productService || 'Transport Charges')}</td><td class="center">${escapeHtml(invoice.sacCode || '-')}</td><td class="right">${num(invoice.subTotal).toFixed(2)}</td></tr>
               <tr class="strong"><td colspan="3" class="right">Sub Total</td><td class="right">${num(invoice.subTotal).toFixed(2)}</td></tr>
-              ${invoice.gstType === 'CGST_SGST'
+              ${num(invoice.gstPercent) === 0
+                ? `<tr><td colspan="3" class="right">GST 0%</td><td class="right">0.00</td></tr>`
+                : invoice.gstType === 'CGST_SGST'
                 ? `<tr><td colspan="3" class="right">CGST ${num(invoice.gstPercent) / 2}%</td><td class="right">${num(invoice.cgst).toFixed(2)}</td></tr><tr><td colspan="3" class="right">SGST ${num(invoice.gstPercent) / 2}%</td><td class="right">${num(invoice.sgst).toFixed(2)}</td></tr>`
                 : `<tr><td colspan="3" class="right">${gstLabel} ${num(invoice.gstPercent)}%</td><td class="right">${num(invoice.igst).toFixed(2)}</td></tr>`}
               <tr class="strong"><td colspan="3" class="right">Total</td><td class="right">${num(invoice.grandTotal).toFixed(2)}</td></tr>
@@ -955,10 +973,12 @@ export default function Billing() {
         <h3 style={{ fontSize: '14px', color: '#334155', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px', marginBottom: '15px' }}>3. Taxes & Adjustments</h3>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px', marginBottom: '25px' }}>
           <Field label="Tax Type">
-            <select value={gstType} onChange={e => setGstType(e.target.value)} style={fieldStyle}>
+            <select value={gstType} disabled style={{ ...fieldStyle, backgroundColor: '#f1f5f9' }}>
+              <option value="NONE">No GST / 0%</option>
               <option value="CGST_SGST">CGST & SGST</option>
               <option value="IGST">IGST</option>
             </select>
+            {num(gstPercent) > 0 && (companyGstLocation.stateCode === '-' || selectedGstLocation.stateCode === '-') && <span style={{ color: '#dc2626', fontSize: '11px' }}>Enter valid company and billing-location GSTIN values to map tax.</span>}
           </Field>
           <Field label="GST %">
             {isManualTaxInvoice ? <select value={gstPercent} onChange={e => setGstPercent(Number(e.target.value))} style={fieldStyle}>

@@ -3,7 +3,7 @@ const { PrismaClient } = require('@prisma/client');
 const { withTenant } = require('./tenant');
 const { ensureStandardAccountingAccounts, ensureClientDieselAccount } = require('../lib/accountingAccounts');
 const { toNumber, toInt, toRequiredInt, toDate, text } = require('../lib/coerce');
-const { calculateIoclTotals } = require('../lib/invoiceMath');
+const { calculateIoclTotals, roundMoney, resolveGstType } = require('../lib/invoiceMath');
 const router = express.Router();
 const prisma = new PrismaClient();
 
@@ -100,13 +100,15 @@ async function buildInvoiceLedgerEntries(tx, req, invoice, selectedTrips, d, inv
     if (ledgerEntries.length) await tx.ledgerEntry.createMany({ data: ledgerEntries });
 }
 
-function invoiceTotals(selectedTrips, d) {
+function invoiceTotals(selectedTrips, d, gstType) {
     const subTotal = selectedTrips.reduce((sum, trip) => sum + toNumber(trip.totalClientBill), 0);
-    const cgst = toNumber(d.cgst);
-    const sgst = toNumber(d.sgst);
-    const igst = toNumber(d.igst);
+    const rate = Math.max(toNumber(d.gstPercent), 0);
+    const totalTax = roundMoney(subTotal * rate / 100);
+    const cgst = gstType === 'CGST_SGST' ? roundMoney(totalTax / 2) : 0;
+    const sgst = gstType === 'CGST_SGST' ? roundMoney(totalTax - cgst) : 0;
+    const igst = gstType === 'IGST' ? totalTax : 0;
     const otherCharges = toNumber(d.otherCharges);
-    const grandTotal = subTotal + cgst + sgst + igst + otherCharges;
+    const grandTotal = roundMoney(subTotal + cgst + sgst + igst + otherCharges);
     const advanceReceived = selectedTrips.reduce((sum, trip) => sum + toNumber(trip.clientAdvanceAmount), 0);
     return { subTotal, cgst, sgst, igst, otherCharges, grandTotal, advanceReceived };
 }
@@ -181,7 +183,10 @@ router.post('/', async (req, res) => {
             if (selectedTrips.some(trip => trip.companyId !== location.companyId)) throw new Error('All selected trips must belong to the selected billing location client.');
             const invoiceNo = await resolveInvoiceNo(tx, req, d, location.companyId);
 
-            const totals = isManualTaxInvoice ? ioclInvoiceTotals(d) : invoiceTotals(selectedTrips, d);
+            const profile = await tx.myCompanyProfile.findFirst({ where: withTenant(req) });
+            const resolvedGstType = resolveGstType(profile?.gstNumber, location.gstNumber, d.gstPercent);
+            const taxData = { ...d, gstType: resolvedGstType };
+            const totals = isManualTaxInvoice ? ioclInvoiceTotals(taxData) : invoiceTotals(selectedTrips, taxData, resolvedGstType);
             const { subTotal, cgst, sgst, igst, otherCharges, grandTotal, advanceReceived } = totals;
             const balanceAmount = Math.max(grandTotal - advanceReceived, 0);
 
@@ -193,7 +198,7 @@ router.post('/', async (req, res) => {
                     sacCode: text(d.sacCode, null) || null,
                     vendorCode: text(d.vendorCode, null) || null,
                     poMigo: text(d.poMigo, null) || null,
-                    ...invoiceFormatData(d, location),
+                    ...invoiceFormatData(taxData, location),
                     showStatus: Boolean(d.showStatus),
                     date: toDate(d.date, new Date()),
                     dueDate: toDate(d.dueDate),
@@ -276,7 +281,10 @@ router.put('/:id', async (req, res) => {
                 data: { invoiceId: invId, status: 'Billed' }
             });
 
-            const totals = isManualTaxInvoice ? ioclInvoiceTotals(d) : invoiceTotals(selectedTrips, d);
+            const profile = await tx.myCompanyProfile.findFirst({ where: withTenant(req) });
+            const resolvedGstType = resolveGstType(profile?.gstNumber, location.gstNumber, d.gstPercent);
+            const taxData = { ...d, gstType: resolvedGstType };
+            const totals = isManualTaxInvoice ? ioclInvoiceTotals(taxData) : invoiceTotals(selectedTrips, taxData, resolvedGstType);
             const { subTotal, cgst, sgst, igst, otherCharges, grandTotal, advanceReceived } = totals;
             const paymentTotal = existing.payments.reduce((sum, p) => sum + toNumber(p.amount), 0);
             const totalPaid = advanceReceived + paymentTotal;
@@ -290,7 +298,7 @@ router.put('/:id', async (req, res) => {
                     sacCode: text(d.sacCode, null) || null,
                     vendorCode: text(d.vendorCode, null) || null,
                     poMigo: text(d.poMigo, null) || null,
-                    ...invoiceFormatData(d, location),
+                    ...invoiceFormatData(taxData, location),
                     showStatus: Boolean(d.showStatus),
                     date: toDate(d.date, existing.date),
                     dueDate: toDate(d.dueDate),
