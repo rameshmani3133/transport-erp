@@ -2,7 +2,7 @@
 const { PrismaClient } = require('@prisma/client');
 const { withTenant } = require('./tenant');
 const { ensureDriverAdvanceAccount, ensureStandardAccountingAccounts, ensureClientDieselAccount, ensureVendorDieselAccount } = require('../lib/accountingAccounts');
-const { toNumber, toInt, toRequiredInt, toDate } = require('../lib/coerce');
+const { toNumber, toInt, toRequiredInt, toDate, text } = require('../lib/coerce');
 const router = express.Router();
 const prisma = new PrismaClient();
 
@@ -126,8 +126,13 @@ async function syncTripAdvanceLedger(tx, req, trip, vehicle) {
 }
 
 function tripPayload(req, d, isUpdate = false) {
+    const clientTotal = toNumber(d.totalClientBill);
+    const vendorTotal = toNumber(d.netTruckPayout);
+    const clientAdjustments = toNumber(d.clientExtraSizeCharge) + toNumber(d.clientHaltingCharge);
+    const vendorAdjustments = toNumber(d.vendorExtraSizeCharge) + toNumber(d.vendorHaltingCharge);
     return {
         date: toDate(d.date, isUpdate ? undefined : new Date()),
+        docNumber: text(d.docNumber, null) || null,
         companyId: toRequiredInt(d.companyId, 'Client company'),
         routeId: toRequiredInt(d.routeId, 'Route'),
         vehicleId: toRequiredInt(d.vehicleId, 'Vehicle'),
@@ -149,12 +154,16 @@ function tripPayload(req, d, isUpdate = false) {
         guaranteeWeight: toNumber(d.guaranteeWeight),
         netWeight: Math.max(toNumber(d.billWeight), toNumber(d.guaranteeWeight)),
         commission: toNumber(d.commission),
+        otherDeduction: Math.max(toNumber(d.otherDeduction), 0),
+        remarks: text(d.remarks, null) || null,
         clientCalcType: d.clientCalcType || 'PerTon',
         clientRate: toNumber(d.clientRate),
+        clientFreight: Math.max(clientTotal - clientAdjustments, 0),
         vendorCalcType: d.vendorCalcType || 'PerTon',
         vendorRate: toNumber(d.vendorRate),
-        totalClientBill: toNumber(d.totalClientBill),
-        netTruckPayout: toNumber(d.netTruckPayout),
+        vendorFreight: Math.max(vendorTotal - vendorAdjustments, 0),
+        totalClientBill: clientTotal,
+        netTruckPayout: vendorTotal,
         dieselAccountId: toInt(d.dieselPumpId),
         dieselLiters: toNumber(d.dieselLiters),
         dieselRate: toNumber(d.dieselRate),
@@ -166,6 +175,12 @@ function tripPayload(req, d, isUpdate = false) {
         clientAdvanceClientAccountId: toInt(d.clientAdvanceClientAccountId),
         clientAdvanceDate: toDate(d.clientAdvanceDate),
         clientAdvanceAmount: toNumber(d.clientAdvanceAmount),
+        rtoPc: Math.max(toNumber(d.rtoPc), 0),
+        parking: Math.max(toNumber(d.parking), 0),
+        loading: Math.max(toNumber(d.loading), 0),
+        unloading: Math.max(toNumber(d.unloading), 0),
+        otherBillsAmount: Math.max(toNumber(d.otherBillsAmount), 0),
+        otherBillsDesc: text(d.otherBillsDesc, null) || null,
         status: d.status || 'In-Transit'
     };
 }
@@ -260,5 +275,3 @@ router.delete('/:id', async (req, res) => {
 });
 
 module.exports = router;
-
-

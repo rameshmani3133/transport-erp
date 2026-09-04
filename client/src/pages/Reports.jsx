@@ -31,34 +31,76 @@ const Bar = ({ label, value, max, color }) => (
     </div>
 );
 
-function SortableReportTable({ rows, columns, title, tableTitle, exportExcel, exportCsv, printReport }) {
+function SortableReportTable({ rows, columns, title, tableTitle, exportExcel, exportCsv, printReport, defaultVisibleKeys }) {
     const [processedRows, setProcessedRows] = useState(rows);
+    const columnSignature = columns.map(column => column.key).join('|');
+    const defaults = defaultVisibleKeys?.length ? defaultVisibleKeys : columns.map(column => column.key);
+    const [visibleKeys, setVisibleKeys] = useState(defaults);
+
+    useEffect(() => {
+        setProcessedRows(rows);
+    }, [rows]);
+
+    useEffect(() => {
+        try {
+            const stored = JSON.parse(localStorage.getItem(`report-columns:${title}`) || 'null');
+            const valid = Array.isArray(stored) ? stored.filter(key => columns.some(column => column.key === key)) : [];
+            setVisibleKeys(valid.length ? valid : defaults);
+        } catch {
+            setVisibleKeys(defaults);
+        }
+    }, [title, columnSignature]);
+
+    const visibleColumns = columns.filter(column => visibleKeys.includes(column.key));
+    const toggleColumn = key => {
+        const next = visibleKeys.includes(key) ? visibleKeys.filter(item => item !== key) : [...visibleKeys, key];
+        if (!next.length) return;
+        setVisibleKeys(next);
+        localStorage.setItem(`report-columns:${title}`, JSON.stringify(next));
+    };
+    const applyColumns = keys => {
+        setVisibleKeys(keys);
+        localStorage.setItem(`report-columns:${title}`, JSON.stringify(keys));
+    };
+    const totalColumns = visibleColumns.filter(column => column.total);
+    const valueFor = (row, column) => column.exportValue ? column.exportValue(row) : row[column.key] ?? '';
 
     return (
         <>
             <div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}>
-                <button onClick={() => exportExcel(processedRows, columns, title)} style={{ padding: '9px 14px', border: 0, borderRadius: '6px', background: '#0f766e', color: 'white', fontWeight: 800, cursor: 'pointer' }}>Export Excel</button>
-                <button onClick={() => exportCsv(processedRows, columns, title)} style={{ padding: '9px 14px', border: 0, borderRadius: '6px', background: '#475569', color: 'white', fontWeight: 800, cursor: 'pointer' }}>Export CSV</button>
-                <button onClick={() => printReport(processedRows, columns, title)} style={{ padding: '9px 14px', border: 0, borderRadius: '6px', background: '#2563eb', color: 'white', fontWeight: 800, cursor: 'pointer' }}>Print Report</button>
+                <button onClick={() => exportExcel(processedRows, visibleColumns, title)} style={{ padding: '9px 14px', border: 0, borderRadius: '6px', background: '#0f766e', color: 'white', fontWeight: 800, cursor: 'pointer' }}>Export Excel</button>
+                <button onClick={() => exportCsv(processedRows, visibleColumns, title)} style={{ padding: '9px 14px', border: 0, borderRadius: '6px', background: '#475569', color: 'white', fontWeight: 800, cursor: 'pointer' }}>Export CSV</button>
+                <button onClick={() => printReport(processedRows, visibleColumns, title)} style={{ padding: '9px 14px', border: 0, borderRadius: '6px', background: '#2563eb', color: 'white', fontWeight: 800, cursor: 'pointer' }}>Print Report</button>
+                <details style={{ position: 'relative' }}>
+                    <summary style={{ listStyle: 'none', padding: '8px 12px', border: '1px solid #cbd5e1', borderRadius: '6px', background: 'white', color: '#334155', cursor: 'pointer', fontWeight: 800 }}>Columns ({visibleColumns.length}/{columns.length})</summary>
+                    <div style={{ position: 'absolute', zIndex: 20, top: '42px', right: 0, width: '280px', maxHeight: '360px', overflowY: 'auto', padding: '12px', border: '1px solid #cbd5e1', borderRadius: '8px', background: 'white', boxShadow: '0 12px 30px rgba(15,23,42,.18)' }}>
+                        <div style={{ display: 'flex', gap: '6px', marginBottom: '9px' }}><button type="button" onClick={() => applyColumns(columns.map(column => column.key))}>Show all</button><button type="button" onClick={() => applyColumns(defaults)}>Recommended</button></div>
+                        {columns.map(column => <label key={column.key} style={{ display: 'flex', gap: '8px', alignItems: 'center', padding: '5px 0', fontSize: '12px' }}><input type="checkbox" checked={visibleKeys.includes(column.key)} onChange={() => toggleColumn(column.key)} />{column.header}</label>)}
+                    </div>
+                </details>
             </div>
-            <DataTable data={rows} columns={columns} title={tableTitle || title.replace(/_/g, ' ')} enableColumnFilters onFilteredDataChange={setProcessedRows} />
+            {totalColumns.length > 0 && <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '12px' }}>{totalColumns.map(column => <div key={column.key} style={{ padding: '9px 12px', border: '1px solid #dbeafe', borderRadius: '7px', background: '#eff6ff' }}><span style={{ color: '#64748b', fontSize: '10px', fontWeight: 800, textTransform: 'uppercase' }}>{column.totalLabel || column.header}</span><div style={{ color: '#1d4ed8', fontWeight: 900 }}>{column.totalFormat === 'number' ? Number(processedRows.reduce((sum, row) => sum + Number(valueFor(row, column) || 0), 0)).toFixed(2) : money(processedRows.reduce((sum, row) => sum + Number(valueFor(row, column) || 0), 0))}</div></div>)}</div>}
+            <DataTable data={rows} columns={visibleColumns} title={tableTitle || title.replace(/_/g, ' ')} enableColumnFilters onFilteredDataChange={setProcessedRows} />
         </>
     );
 }
 
 export default function Reports() {
     const [activeTab, setActiveTab] = useState('summary');
-    const [filters, setFilters] = useState({ clientId: '', startDate: '', endDate: '', group: 'All', loanPaymentStatus: 'All', loanStatus: 'All', voucherType: 'All', voucherStatus: 'All' });
-    const [data, setData] = useState({ trips: [], invoices: [], settlements: [], accounts: [], vehicles: [], clients: [], payments: [], loans: [], vouchers: [], loading: true });
+    const [tripReportView, setTripReportView] = useState('vendor');
+    const [filters, setFilters] = useState({ clientId: '', startDate: '', endDate: '', group: 'All', loanPaymentStatus: 'All', loanStatus: 'All', voucherType: 'All', voucherStatus: 'All', vehicleId: '', ownershipType: 'All', partyName: '', tripStatus: 'All', invoiceState: 'All', settlementState: 'All', fromLocation: '', toLocation: '' });
+    const [data, setData] = useState({ trips: [], tripReportRows: [], invoices: [], settlements: [], accounts: [], vehicles: [], clients: [], payments: [], loans: [], vouchers: [], loading: true });
 
     useEffect(() => {
         const fetchAllData = async () => {
             try {
-                const [tRes, iRes, sRes, aRes, vRes, cRes, pRes, lRes, voRes] = await Promise.all([
-                    fetch('/api/trips'), fetch('/api/invoices'), fetch('/api/settlements'), fetch('/api/ledger/accounts'), fetch('/api/vehicles'), fetch('/api/companies'), fetch('/api/payments'), fetch('/api/loans'), fetch('/api/vouchers')
+                const [tRes, trRes, iRes, sRes, aRes, vRes, cRes, pRes, lRes, voRes] = await Promise.all([
+                    fetch('/api/trips'), fetch('/api/reports/trips'), fetch('/api/invoices'), fetch('/api/settlements'), fetch('/api/ledger/accounts'), fetch('/api/vehicles'), fetch('/api/companies'), fetch('/api/payments'), fetch('/api/loans'), fetch('/api/vouchers')
                 ]);
+                const tripReport = trRes.ok ? await trRes.json() : { rows: [] };
                 setData({
                     trips: tRes.ok ? await tRes.json() : [],
+                    tripReportRows: tripReport.rows || [],
                     invoices: iRes.ok ? await iRes.json() : [],
                     settlements: sRes.ok ? await sRes.json() : [],
                     accounts: aRes.ok ? await aRes.json() : [],
@@ -83,6 +125,28 @@ export default function Reports() {
         if (filters.endDate && new Date(t.date) > new Date(filters.endDate)) return false;
         return true;
     }), [data.trips, filters]);
+
+    const detailedTripRows = useMemo(() => data.tripReportRows.map(row => ({
+        ...row,
+        ...(row.views?.[tripReportView] || {})
+    })).filter(row => {
+        if (filters.clientId && String(row.clientId) !== String(filters.clientId)) return false;
+        if (filters.startDate && String(row.date).slice(0, 10) < filters.startDate) return false;
+        if (filters.endDate && String(row.date).slice(0, 10) > filters.endDate) return false;
+        if (filters.vehicleId && String(row.vehicleId) !== String(filters.vehicleId)) return false;
+        if (filters.ownershipType !== 'All' && row.ownershipType !== filters.ownershipType) return false;
+        if (filters.partyName && !String(row.partyName || '').toLowerCase().includes(filters.partyName.toLowerCase())) return false;
+        if (filters.fromLocation && !String(row.fromLocation || '').toLowerCase().includes(filters.fromLocation.toLowerCase())) return false;
+        if (filters.toLocation && !String(row.toLocation || '').toLowerCase().includes(filters.toLocation.toLowerCase())) return false;
+        if (filters.tripStatus !== 'All' && row.tripStatus !== filters.tripStatus) return false;
+        if (filters.invoiceState === 'Billed' && !row.invoiceNo) return false;
+        if (filters.invoiceState === 'Unbilled' && row.invoiceNo) return false;
+        if (filters.settlementState === 'Settled' && !row.settlementNo) return false;
+        if (filters.settlementState === 'Unsettled' && row.settlementNo) return false;
+        if (tripReportView === 'vendor' && row.ownershipType !== 'Market') return false;
+        if (tripReportView === 'own' && row.ownershipType === 'Market') return false;
+        return true;
+    }), [data.tripReportRows, filters, tripReportView]);
 
     const filteredInvoices = useMemo(() => data.invoices.filter(inv => {
         if (filters.startDate && new Date(inv.date) < new Date(filters.startDate)) return false;
@@ -137,12 +201,6 @@ export default function Reports() {
     }, { '0-30': 0, '31-60': 0, '61-90': 0, '90+': 0 });
     const agingMax = Math.max(...Object.values(aging), 1);
 
-    const tripRows = filteredTrips.map(t => ({
-        ...t,
-        grossMargin: Number(t.totalClientBill || 0) - Number(t.netTruckPayout || 0),
-        marginPct: Number(t.totalClientBill || 0) > 0 ? ((Number(t.totalClientBill || 0) - Number(t.netTruckPayout || 0)) / Number(t.totalClientBill || 0)) * 100 : 0
-    }));
-
     const clientRows = data.clients.map(client => {
         const invoices = data.invoices.filter(inv => inv.location?.company?.id === client.id);
         const trips = data.trips.filter(t => t.companyId === client.id);
@@ -163,7 +221,8 @@ export default function Reports() {
     };
     const exportExcel = (rows, columns, title) => {
         if (!rows.length) return alert('No data to export.');
-        const html = `<html><head><meta charset="utf-8" /><style>.excel-text{mso-number-format:"\\@";}</style></head><body><table border="1"><thead><tr>${columns.map(c => `<th>${htmlEscape(c.header)}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${columns.map(c => `<td${c.excelText ? ' class="excel-text"' : ''}>${htmlEscape(tableValue(row, c))}</td>`).join('')}</tr>`).join('')}</tbody></table></body></html>`;
+        const totals = columns.some(column => column.total) ? `<tfoot><tr>${columns.map((column, index) => `<td>${column.total ? htmlEscape(rows.reduce((sum, row) => sum + Number(tableValue(row, column) || 0), 0).toFixed(2)) : index === 0 ? 'TOTAL' : ''}</td>`).join('')}</tr></tfoot>` : '';
+        const html = `<html><head><meta charset="utf-8" /><style>.excel-text{mso-number-format:"\\@";}tfoot{font-weight:bold}</style></head><body><table border="1"><thead><tr>${columns.map(c => `<th>${htmlEscape(c.header)}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${columns.map(c => `<td${c.excelText ? ' class="excel-text"' : ''}>${htmlEscape(tableValue(row, c))}</td>`).join('')}</tr>`).join('')}</tbody>${totals}</table></body></html>`;
         downloadFile(html, 'application/vnd.ms-excel', `${title}_${today()}.xls`);
     };
     const exportCsv = (rows, columns, title) => {
@@ -172,7 +231,8 @@ export default function Reports() {
             const content = `${forceText && value !== '' ? '\t' : ''}${String(value ?? '')}`;
             return `"${content.replace(/"/g, '""')}"`;
         };
-        const csv = [columns.map(column => csvCell(column.header)).join(','), ...rows.map(row => columns.map(column => csvCell(tableValue(row, column), column.excelText)).join(','))].join('\r\n');
+        const totalRow = columns.some(column => column.total) ? [columns.map((column, index) => csvCell(column.total ? rows.reduce((sum, row) => sum + Number(tableValue(row, column) || 0), 0).toFixed(2) : index === 0 ? 'TOTAL' : '')).join(',')] : [];
+        const csv = [columns.map(column => csvCell(column.header)).join(','), ...rows.map(row => columns.map(column => csvCell(tableValue(row, column), column.excelText)).join(',')), ...totalRow].join('\r\n');
         downloadFile(`\ufeff${csv}`, 'text/csv;charset=utf-8', `${title}_${today()}.csv`);
     };
     const printReport = (rows, columns, title) => {
@@ -180,28 +240,47 @@ export default function Reports() {
         const printWindow = window.open('', '_blank');
         const dense = columns.length > 10;
         const colgroup = `<colgroup>${columns.map(column => `<col${column.printWidth ? ` style="width:${column.printWidth}"` : ''}>`).join('')}</colgroup>`;
-        printWindow.document.write(`<html><head><title>${htmlEscape(title)}</title><style>@page{size:A4 landscape;margin:6mm}*{box-sizing:border-box}body{font-family:Arial,sans-serif;padding:8px;color:#111827}h2{margin:0 0 3px;font-size:16px}p{color:#64748b;font-size:9px;margin:0 0 8px}table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:${dense ? '7px' : '9px'}}thead{display:table-header-group}tr{break-inside:avoid;page-break-inside:avoid}th,td{border:1px solid #94a3b8;padding:${dense ? '2px 3px' : '4px'};text-align:left;vertical-align:middle;line-height:1.25;overflow-wrap:anywhere}th{background:#e2e8f0;color:#1e293b;font-weight:700}.nowrap{white-space:nowrap;overflow-wrap:normal}.number{text-align:right}@media print{body{padding:0}}</style></head><body><h2>${htmlEscape(title.replace(/_/g, ' '))}</h2><p>Generated on ${new Date().toLocaleString()}</p><table>${colgroup}<thead><tr>${columns.map(c => `<th class="${c.nowrap ? 'nowrap' : ''}">${htmlEscape(c.header)}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${columns.map(c => `<td class="${[c.nowrap ? 'nowrap' : '', c.align === 'right' ? 'number' : ''].filter(Boolean).join(' ')}">${htmlEscape(tableValue(row, c))}</td>`).join('')}</tr>`).join('')}</tbody></table><script>window.onload=()=>window.print()</script></body></html>`);
+        const totals = columns.some(column => column.total) ? `<tfoot><tr>${columns.map((column, index) => `<td class="${column.align === 'right' ? 'number' : ''}">${column.total ? htmlEscape(column.totalFormat === 'number' ? rows.reduce((sum, row) => sum + Number(tableValue(row, column) || 0), 0).toFixed(2) : money(rows.reduce((sum, row) => sum + Number(tableValue(row, column) || 0), 0))) : index === 0 ? 'TOTAL' : ''}</td>`).join('')}</tr></tfoot>` : '';
+        printWindow.document.write(`<html><head><title>${htmlEscape(title)}</title><style>@page{size:A4 landscape;margin:6mm}*{box-sizing:border-box}body{font-family:Arial,sans-serif;padding:8px;color:#111827}h2{margin:0 0 3px;font-size:16px}p{color:#64748b;font-size:9px;margin:0 0 8px}table{width:100%;border-collapse:collapse;table-layout:fixed;font-size:${dense ? '7px' : '9px'}}thead{display:table-header-group}tfoot{display:table-row-group;font-weight:800;background:#f1f5f9}tr{break-inside:avoid;page-break-inside:avoid}th,td{border:1px solid #94a3b8;padding:${dense ? '2px 3px' : '4px'};text-align:left;vertical-align:middle;line-height:1.25;overflow-wrap:anywhere}th{background:#e2e8f0;color:#1e293b;font-weight:700}.nowrap{white-space:nowrap;overflow-wrap:normal}.number{text-align:right}@media print{body{padding:0}}</style></head><body><h2>${htmlEscape(title.replace(/_/g, ' '))}</h2><p>Generated on ${new Date().toLocaleString()}</p><table>${colgroup}<thead><tr>${columns.map(c => `<th class="${c.nowrap ? 'nowrap' : ''}">${htmlEscape(c.header)}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${columns.map(c => `<td class="${[c.nowrap ? 'nowrap' : '', c.align === 'right' ? 'number' : ''].filter(Boolean).join(' ')}">${htmlEscape(tableValue(row, c))}</td>`).join('')}</tr>`).join('')}</tbody>${totals}</table><script>window.onload=()=>window.print()</script></body></html>`);
         printWindow.document.close();
     };
     if (data.loading) return <div style={{ padding: '40px', fontWeight: 800 }}>Loading reports...</div>;
 
+    const amountColumn = (header, key) => ({ header, key, render: row => money(row[key]), exportValue: row => row[key], total: true, align: 'right', nowrap: true });
+    const numberColumn = (header, key) => ({ header, key, exportValue: row => row[key], total: true, totalFormat: 'number', align: 'right', nowrap: true });
     const tripCols = [
-        { header: 'Trip', key: 'tripNo', render: t => <strong>{t.tripNo}</strong>, exportValue: t => t.tripNo },
-        { header: 'Date', key: 'date', render: t => dateText(t.date), exportValue: t => dateText(t.date) },
-        { header: 'Client', key: 'company.companyName', render: t => t.company?.companyName, exportValue: t => t.company?.companyName || '' },
-        { header: 'Vehicle', key: 'vehicle.regNo', render: t => t.vehicle?.regNo, exportValue: t => t.vehicle?.regNo || '' },
-        { header: 'Revenue', key: 'totalClientBill', render: t => money(t.totalClientBill), exportValue: t => t.totalClientBill },
-        { header: 'Vendor Cost', key: 'netTruckPayout', render: t => money(t.netTruckPayout), exportValue: t => t.netTruckPayout },
-        { header: 'Client Diesel', key: 'dieselAmount', render: t => money(t.dieselAmount), exportValue: t => t.dieselAmount },
-        { header: 'Margin', key: 'grossMargin', render: t => <strong style={{ color: t.grossMargin >= 0 ? '#0f766e' : '#dc2626' }}>{money(t.grossMargin)} ({pct(t.marginPct)})</strong>, exportValue: t => t.grossMargin }
+        { header: 'Movement No', key: 'movementNo', render: row => <strong>{row.movementNo}</strong>, exportValue: row => row.movementNo, excelText: true, nowrap: true },
+        { header: 'Trip No', key: 'tripNo', excelText: true, nowrap: true },
+        { header: 'Load Date', key: 'date', render: row => dateText(row.date), exportValue: row => dateText(row.date), nowrap: true },
+        { header: 'Truck No', key: 'vehicleNo', excelText: true, nowrap: true },
+        { header: 'From', key: 'fromLocation' }, { header: 'To', key: 'toLocation' },
+        { header: 'Client', key: 'clientName' },
+        { header: tripReportView === 'own' ? 'Driver / Party' : 'Party', key: 'partyName' },
+        { header: 'Ownership', key: 'ownershipType' }, { header: 'Measurement', key: 'measurement', nowrap: true },
+        numberColumn('Bill Weight', 'billWeight'), numberColumn('Guarantee Weight', 'guaranteeWeight'), numberColumn('Chargeable Weight', 'chargeableWeight'),
+        { header: 'Rate Type', key: 'rateType' }, amountColumn('Rate', 'rate'), amountColumn('Basic Freight', 'basicFreight'),
+        amountColumn('ODC / Extra Size', 'odcAmount'), numberColumn('Halt Days', 'haltingDays'), amountColumn('Halt Amount', 'haltingAmount'),
+        amountColumn(tripReportView === 'client' ? 'Party Amount' : 'Gross Amount', 'grossAmount'), amountColumn('Advance', 'advance'),
+        { header: 'Advance Date', key: 'advanceDate', render: row => dateText(row.advanceDate), exportValue: row => dateText(row.advanceDate), nowrap: true },
+        amountColumn(tripReportView === 'own' ? 'Diesel Cost' : tripReportView === 'client' ? 'Client Diesel Adj.' : 'Diesel Recovery', 'dieselRecovery'),
+        amountColumn('Commission', 'commission'), amountColumn('Trip Expenses', 'otherExpenses'), amountColumn('Other Deduction', 'otherDeduction'),
+        amountColumn('Total Deductions', 'totalDeductions'), amountColumn(tripReportView === 'own' ? 'Operating Balance' : 'Balance Payable', 'balanceAmount'),
+        { header: 'Invoice No', key: 'invoiceNo', excelText: true, nowrap: true }, { header: 'Invoice Status', key: 'invoiceStatus' },
+        { header: 'Settlement No', key: 'settlementNo', excelText: true, nowrap: true }, { header: 'Settlement Status', key: 'settlementStatus' },
+        { header: 'Trip Status', key: 'tripStatus' }, { header: 'Expense Description', key: 'expenseRemarks' }, { header: 'Remarks', key: 'remarks' }
     ];
+    const tripDefaultColumns = {
+        client: ['movementNo', 'vehicleNo', 'date', 'fromLocation', 'toLocation', 'partyName', 'measurement', 'billWeight', 'guaranteeWeight', 'rate', 'grossAmount', 'advance', 'advanceDate', 'dieselRecovery', 'totalDeductions', 'balanceAmount', 'invoiceNo'],
+        vendor: ['movementNo', 'vehicleNo', 'date', 'fromLocation', 'toLocation', 'partyName', 'measurement', 'billWeight', 'guaranteeWeight', 'rate', 'grossAmount', 'advance', 'advanceDate', 'haltingDays', 'haltingAmount', 'dieselRecovery', 'commission', 'otherDeduction', 'totalDeductions', 'balanceAmount'],
+        own: ['movementNo', 'vehicleNo', 'date', 'fromLocation', 'toLocation', 'clientName', 'partyName', 'billWeight', 'rate', 'grossAmount', 'advance', 'dieselRecovery', 'otherExpenses', 'totalDeductions', 'balanceAmount']
+    }[tripReportView];
     const invoiceCols = [
         { header: 'Invoice', key: 'invoiceNo', render: inv => <strong>{inv.invoiceNo}</strong>, exportValue: inv => inv.invoiceNo },
         { header: 'Client', key: 'location.company.companyName', render: inv => inv.location?.company?.companyName, exportValue: inv => inv.location?.company?.companyName || '' },
         { header: 'Date', key: 'date', render: inv => dateText(inv.date), exportValue: inv => dateText(inv.date) },
-        { header: 'Total', key: 'grandTotal', render: inv => money(inv.grandTotal), exportValue: inv => inv.grandTotal },
-        { header: 'Paid/Advance', key: 'totalPaid', render: inv => money(inv.totalPaid), exportValue: inv => inv.totalPaid },
-        { header: 'Balance', key: 'balanceAmount', render: inv => <strong style={{ color: inv.balanceAmount > 0 ? '#b45309' : '#0f766e' }}>{money(inv.balanceAmount)}</strong>, exportValue: inv => inv.balanceAmount },
+        { header: 'Total', key: 'grandTotal', render: inv => money(inv.grandTotal), exportValue: inv => inv.grandTotal, total: true },
+        { header: 'Paid/Advance', key: 'totalPaid', render: inv => money(inv.totalPaid), exportValue: inv => inv.totalPaid, total: true },
+        { header: 'Balance', key: 'balanceAmount', render: inv => <strong style={{ color: inv.balanceAmount > 0 ? '#b45309' : '#0f766e' }}>{money(inv.balanceAmount)}</strong>, exportValue: inv => inv.balanceAmount, total: true },
         { header: 'Status', key: 'status', render: inv => inv.status, exportValue: inv => inv.status }
     ];
     const accountCols = [
@@ -212,9 +291,9 @@ export default function Reports() {
     ];
     const clientCols = [
         { header: 'Client', key: 'name', render: c => <strong>{c.name}</strong>, exportValue: c => c.name },
-        { header: 'Trips', key: 'trips', exportValue: c => c.trips },
-        { header: 'Invoiced', key: 'invoiced', render: c => money(c.invoiced), exportValue: c => c.invoiced },
-        { header: 'Outstanding', key: 'outstanding', render: c => <strong>{money(c.outstanding)}</strong>, exportValue: c => c.outstanding }
+        { header: 'Trips', key: 'trips', exportValue: c => c.trips, total: true, totalFormat: 'number' },
+        { header: 'Invoiced', key: 'invoiced', render: c => money(c.invoiced), exportValue: c => c.invoiced, total: true },
+        { header: 'Outstanding', key: 'outstanding', render: c => <strong>{money(c.outstanding)}</strong>, exportValue: c => c.outstanding, total: true }
     ];
     const loanCols = [
         { header: 'Loan No', key: 'loanNo', render: loan => <strong>{loan.loanNo || '-'}</strong>, exportValue: loan => loan.loanNo || '', excelText: true, printWidth: '7%', nowrap: true },
@@ -223,9 +302,9 @@ export default function Reports() {
         { header: 'Account No', key: 'lenderAccountNo', render: loan => loan.lenderAccountNo || '-', exportValue: loan => String(loan.lenderAccountNo || ''), excelText: true, printWidth: '11%', nowrap: true },
         { header: 'IFSC', key: 'lenderIfscCode', render: loan => loan.lenderIfscCode || '-', exportValue: loan => loan.lenderIfscCode || '', excelText: true, printWidth: '8%', nowrap: true },
         { header: 'Vehicle', key: 'vehicle.regNo', render: loan => loan.vehicle?.regNo || '-', exportValue: loan => loan.vehicle?.regNo || '', excelText: true, printWidth: '7%', nowrap: true },
-        { header: 'Loan Amount', key: 'principalAmount', render: loan => money(loan.principalAmount), exportValue: loan => loan.principalAmount, printWidth: '8%', align: 'right', nowrap: true },
-        { header: 'Outstanding', key: 'outstandingAmount', render: loan => <strong>{money(loan.outstandingAmount)}</strong>, exportValue: loan => loan.outstandingAmount, printWidth: '8%', align: 'right', nowrap: true },
-        { header: 'EMI', key: 'emiAmount', render: loan => money(loan.emiAmount), exportValue: loan => loan.emiAmount, printWidth: '7%', align: 'right', nowrap: true },
+        { header: 'Loan Amount', key: 'principalAmount', render: loan => money(loan.principalAmount), exportValue: loan => loan.principalAmount, printWidth: '8%', align: 'right', nowrap: true, total: true },
+        { header: 'Outstanding', key: 'outstandingAmount', render: loan => <strong>{money(loan.outstandingAmount)}</strong>, exportValue: loan => loan.outstandingAmount, printWidth: '8%', align: 'right', nowrap: true, total: true },
+        { header: 'EMI', key: 'emiAmount', render: loan => money(loan.emiAmount), exportValue: loan => loan.emiAmount, printWidth: '7%', align: 'right', nowrap: true, total: true },
         { header: 'Monthly Due Date', key: 'nextDueDate', render: loan => dateText(loan.nextDueDate), exportValue: loan => dateText(loan.nextDueDate), printWidth: '7%', nowrap: true },
         { header: 'Paid Date', key: 'paidDate', render: loan => dateText(loan.paidDate), exportValue: loan => dateText(loan.paidDate), printWidth: '7%', nowrap: true },
         { header: 'Payment Status', key: 'paymentStatus', render: loan => loan.paymentStatus || 'Due', exportValue: loan => loan.paymentStatus || 'Due' },
@@ -238,7 +317,7 @@ export default function Reports() {
         { header: 'Type', key: 'voucherType', render: voucher => voucher.voucherType.replace(/_/g, ' '), exportValue: voucher => voucher.voucherType.replace(/_/g, ' ') },
         { header: 'Debit Account(s)', key: 'debitAccounts', filterValue: voucher => voucher.lines?.filter(line => line.type === 'Dr').map(line => line.account?.accountName).join(', ') || '', render: voucher => voucher.lines?.filter(line => line.type === 'Dr').map(line => line.account?.accountName).join(', ') || '-', exportValue: voucher => voucher.lines?.filter(line => line.type === 'Dr').map(line => line.account?.accountName).join(', ') || '' },
         { header: 'Credit Account(s)', key: 'creditAccounts', filterValue: voucher => voucher.lines?.filter(line => line.type === 'Cr').map(line => line.account?.accountName).join(', ') || '', render: voucher => voucher.lines?.filter(line => line.type === 'Cr').map(line => line.account?.accountName).join(', ') || '-', exportValue: voucher => voucher.lines?.filter(line => line.type === 'Cr').map(line => line.account?.accountName).join(', ') || '' },
-        { header: 'Amount', key: 'totalAmount', render: voucher => <strong>{money(voucher.totalAmount)}</strong>, exportValue: voucher => voucher.totalAmount },
+        { header: 'Amount', key: 'totalAmount', render: voucher => <strong>{money(voucher.totalAmount)}</strong>, exportValue: voucher => voucher.totalAmount, total: true },
         { header: 'Mode', key: 'paymentMode', render: voucher => voucher.paymentMode || '-', exportValue: voucher => voucher.paymentMode || '' },
         { header: 'Reference', key: 'referenceNo', render: voucher => voucher.referenceNo || '-', exportValue: voucher => voucher.referenceNo || '' },
         { header: 'Narration', key: 'narration', render: voucher => voucher.narration, exportValue: voucher => voucher.narration },
@@ -256,8 +335,19 @@ export default function Reports() {
                 <select value={filters.clientId} onChange={e => setFilters({ ...filters, clientId: e.target.value })} style={{ padding: '10px', border: '1px solid #cbd5e1', borderRadius: '6px' }}><option value="">All clients</option>{data.clients.map(c => <option key={c.id} value={c.id}>{c.companyName}</option>)}</select>
                 <input type="date" value={filters.startDate} onChange={e => setFilters({ ...filters, startDate: e.target.value })} style={{ padding: '10px', border: '1px solid #cbd5e1', borderRadius: '6px' }} />
                 <input type="date" value={filters.endDate} onChange={e => setFilters({ ...filters, endDate: e.target.value })} style={{ padding: '10px', border: '1px solid #cbd5e1', borderRadius: '6px' }} />
-                <button onClick={() => setFilters({ clientId: '', startDate: '', endDate: '', group: 'All', loanPaymentStatus: 'All', loanStatus: 'All', voucherType: 'All', voucherStatus: 'All' })} style={{ padding: '10px', border: '1px solid #cbd5e1', borderRadius: '6px', background: 'white', cursor: 'pointer', fontWeight: 800 }}>Clear</button>
+                <button onClick={() => setFilters({ clientId: '', startDate: '', endDate: '', group: 'All', loanPaymentStatus: 'All', loanStatus: 'All', voucherType: 'All', voucherStatus: 'All', vehicleId: '', ownershipType: 'All', partyName: '', tripStatus: 'All', invoiceState: 'All', settlementState: 'All', fromLocation: '', toLocation: '' })} style={{ padding: '10px', border: '1px solid #cbd5e1', borderRadius: '6px', background: 'white', cursor: 'pointer', fontWeight: 800 }}>Clear</button>
             </div>
+            {activeTab === 'trips' && <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(175px, 1fr))', gap: '10px', margin: '-6px 0 14px', padding: '12px', background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
+                <select value={tripReportView} onChange={e => setTripReportView(e.target.value)}><option value="vendor">Vendor / Market Settlement</option><option value="client">Client Trip Statement</option><option value="own">Own Vehicle Performance</option></select>
+                <select value={filters.vehicleId} onChange={e => setFilters({ ...filters, vehicleId: e.target.value })}><option value="">All vehicles</option>{data.vehicles.map(vehicle => <option key={vehicle.id} value={vehicle.id}>{vehicle.regNo}</option>)}</select>
+                <select value={filters.ownershipType} onChange={e => setFilters({ ...filters, ownershipType: e.target.value })}><option value="All">All ownerships</option>{[...new Set(data.vehicles.map(vehicle => vehicle.ownershipType).filter(Boolean))].sort().map(type => <option key={type} value={type}>{type}</option>)}</select>
+                <input value={filters.partyName} onChange={e => setFilters({ ...filters, partyName: e.target.value })} placeholder="Party / vendor / driver" />
+                <input value={filters.fromLocation} onChange={e => setFilters({ ...filters, fromLocation: e.target.value })} placeholder="From location" />
+                <input value={filters.toLocation} onChange={e => setFilters({ ...filters, toLocation: e.target.value })} placeholder="To location" />
+                <select value={filters.tripStatus} onChange={e => setFilters({ ...filters, tripStatus: e.target.value })}><option value="All">All trip statuses</option><option value="In-Transit">In-Transit</option><option value="Completed">Completed</option><option value="Cancelled">Cancelled</option></select>
+                <select value={filters.invoiceState} onChange={e => setFilters({ ...filters, invoiceState: e.target.value })}><option value="All">Billed + unbilled</option><option value="Billed">Billed only</option><option value="Unbilled">Unbilled only</option></select>
+                <select value={filters.settlementState} onChange={e => setFilters({ ...filters, settlementState: e.target.value })}><option value="All">Settled + unsettled</option><option value="Settled">Settled only</option><option value="Unsettled">Unsettled only</option></select>
+            </div>}
             {activeTab === 'loans' && <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', margin: '-6px 0 14px' }}>
                 <select value={filters.loanPaymentStatus} onChange={e => setFilters({ ...filters, loanPaymentStatus: e.target.value })} style={{ padding: '9px', border: '1px solid #cbd5e1', borderRadius: '6px' }}><option value="All">All payment statuses</option><option value="Due">Due</option><option value="Paid">Paid</option><option value="Part Paid">Part Paid</option><option value="Overdue">Overdue</option><option value="Skipped">Skipped</option></select>
                 <select value={filters.loanStatus} onChange={e => setFilters({ ...filters, loanStatus: e.target.value })} style={{ padding: '9px', border: '1px solid #cbd5e1', borderRadius: '6px' }}><option value="All">All loan statuses</option><option value="Active">Active</option><option value="On Hold">On Hold</option><option value="Closed">Closed</option></select>
@@ -267,7 +357,7 @@ export default function Reports() {
                 <select value={filters.voucherStatus} onChange={e => setFilters({ ...filters, voucherStatus: e.target.value })} style={{ padding: '9px', border: '1px solid #cbd5e1', borderRadius: '6px' }}><option value="All">All voucher statuses</option><option value="Posted">Posted</option><option value="Reversed">Reversed</option></select>
             </div>}
             {activeTab === 'summary' && <><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '14px', marginBottom: '18px' }}><StatCard label="Ledger Revenue" value={money(revenue)} tone="#2563eb" sub="Income ledger balance" /><StatCard label="Ledger Expenses" value={money(expenses)} tone="#dc2626" sub="Expense ledger balance" /><StatCard label="Gross Profit" value={money(grossProfit)} tone={grossProfit >= 0 ? '#0f766e' : '#dc2626'} sub={`Margin ${pct(margin)}`} /><StatCard label="Receivables" value={money(receivables)} tone="#b45309" sub="Open client ledger balance" /><StatCard label="Payables" value={money(payables)} tone="#7c3aed" sub="Vendor and pump creditors" /><StatCard label="Loan Outstanding" value={money(loanOutstanding)} tone="#9333ea" sub={`${dueLoans.length} loans not marked paid`} /><StatCard label="Monthly EMI" value={money(loanMonthlyEmi)} tone="#0f766e" sub="Active loan cash outflow" /><StatCard label="Diesel Control" value={money(dieselControl)} tone="#0f766e" sub="Client/vendor diesel subledgers" /><StatCard label="Output Tax" value={money(taxPayable)} tone="#475569" sub="Duties & Taxes" /></div><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '16px' }}><Section title="Collections Snapshot"><Bar label="Invoiced" value={invoiced} max={Math.max(invoiced, collected, 1)} color="#2563eb" /><Bar label="Collected incl. advances" value={collected} max={Math.max(invoiced, collected, 1)} color="#0f766e" /><Bar label="Unbilled trips" value={unbilled} max={Math.max(invoiced, unbilled, 1)} color="#b45309" /></Section><Section title="Loan Snapshot"><Bar label="Principal" value={loanPrincipal} max={Math.max(loanPrincipal, loanOutstanding, 1)} color="#7c3aed" /><Bar label="Outstanding" value={loanOutstanding} max={Math.max(loanPrincipal, loanOutstanding, 1)} color="#b45309" /><Bar label="Monthly EMI" value={loanMonthlyEmi} max={Math.max(loanPrincipal, loanMonthlyEmi, 1)} color="#0f766e" /></Section><Section title="Receivable Aging">{Object.entries(aging).map(([label, value]) => <Bar key={label} label={label} value={value} max={agingMax} color={label === '90+' ? '#dc2626' : '#0f766e'} />)}</Section><Section title="Top Client Outstanding">{clientRows.slice(0, 5).map(c => <Bar key={c.id} label={c.name} value={c.outstanding} max={Math.max(clientRows[0]?.outstanding || 1, 1)} color="#7c3aed" />)}</Section></div></>}
-            {activeTab === 'trips' && <SortableReportTable rows={tripRows} columns={tripCols} title="Trip_Margin_Report" tableTitle="Trip Profitability" exportExcel={exportExcel} exportCsv={exportCsv} printReport={printReport} />}
+            {activeTab === 'trips' && <SortableReportTable rows={detailedTripRows} columns={tripCols} title={`Detailed_Trip_${tripReportView}_Report`} tableTitle={`${tripReportView === 'vendor' ? 'Vendor / Market Settlement' : tripReportView === 'client' ? 'Client Trip Statement' : 'Own Vehicle Performance'} (${detailedTripRows.length})`} defaultVisibleKeys={tripDefaultColumns} exportExcel={exportExcel} exportCsv={exportCsv} printReport={printReport} />}
             {activeTab === 'invoices' && <SortableReportTable rows={filteredInvoices} columns={invoiceCols} title="Invoice_Collections_Report" tableTitle="Invoice Collections" exportExcel={exportExcel} exportCsv={exportCsv} printReport={printReport} />}
             {activeTab === 'clients' && <SortableReportTable rows={clientRows} columns={clientCols} title="Client_Performance_Report" tableTitle="Client Performance" exportExcel={exportExcel} exportCsv={exportCsv} printReport={printReport} />}
             {activeTab === 'loans' && <SortableReportTable rows={filteredLoans} columns={loanCols} title="Loan_Tracking_Report" tableTitle="Loan Tracking" exportExcel={exportExcel} exportCsv={exportCsv} printReport={printReport} />}

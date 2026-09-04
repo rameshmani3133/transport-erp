@@ -29,7 +29,7 @@ export default function TripManagement() {
   const [filterStatus, setFilterStatus] = useState('All');
 
   const initialState = {
-      date: new Date().toISOString().split('T')[0], companyId: '', routeId: '', vehicleId: '', driverId: '',
+      date: new Date().toISOString().split('T')[0], docNumber: '', companyId: '', routeId: '', vehicleId: '', driverId: '',
       
       dieselPumpId: '', dieselLiters: '', dieselRate: '', dieselAmount: 0,
       clientAdvanceAccountId: '', clientAdvanceClientAccountId: '', clientAdvanceDate: '', clientAdvanceAmount: '',
@@ -42,8 +42,10 @@ export default function TripManagement() {
       haltingDays: '', clientHaltRate: '', vendorHaltRate: '',
       clientHaltingCharge: 0, vendorHaltingCharge: 0,
       
-      billWeight: '', guaranteeWeight: '', netWeight: 0, clientCalcType: 'PerTon', clientRate: '', vendorCalcType: 'PerTon', vendorRate: '', commission: '',
-      totalClientBill: 0, netTruckPayout: 0, status: 'In-Transit'
+      billWeight: '', guaranteeWeight: '', netWeight: 0, clientCalcType: 'PerTon', clientRate: '', vendorCalcType: 'PerTon', vendorRate: '', commission: '', otherDeduction: '',
+      totalClientBill: 0, netTruckPayout: 0,
+      rtoPc: '', parking: '', loading: '', unloading: '', otherBillsAmount: '', otherBillsDesc: '',
+      remarks: '', status: 'In-Transit'
   };
   const [formData, setFormData] = useState(initialState);
 
@@ -144,6 +146,7 @@ export default function TripManagement() {
           ...t,
           date: t.date ? new Date(t.date).toISOString().split('T')[0] : '',
           advanceDate: t.advanceDate ? new Date(t.advanceDate).toISOString().split('T')[0] : '',
+          clientAdvanceDate: t.clientAdvanceDate ? new Date(t.clientAdvanceDate).toISOString().split('T')[0] : '',
           dieselPumpId: t.dieselAccountId || '', 
           advanceAccountId: t.advanceAccountId || '',
           driverId: t.driverId || '',
@@ -262,6 +265,7 @@ export default function TripManagement() {
           <h3 style={{ fontSize: '14px', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px', marginBottom: '15px', color: '#334155' }}>1. Dispatch Details</h3>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginBottom: '25px' }}>
               <FormGroup label="Dispatch Date" name="date" type="date" value={formData.date} onChange={handleChange} required />
+              <FormGroup label="Movement / Document Number" name="docNumber" value={formData.docNumber} onChange={handleChange} />
               
               <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
                   <label style={{ fontSize: '11px', fontWeight: '600', color: '#64748b' }}>Client Company</label>
@@ -392,6 +396,22 @@ export default function TripManagement() {
               <FormGroup label="Vendor Rate (Rs.)" name="vendorRate" type="number" value={formData.vendorRate} onChange={handleChange} />
               
               <FormGroup label="Trip Commission (Rs.)" name="commission" type="number" value={formData.commission} onChange={handleChange} />
+              <FormGroup label="Other Vendor Deduction (Rs.)" name="otherDeduction" type="number" value={formData.otherDeduction} onChange={handleChange} />
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', marginBottom: '20px' }}>
+              <label style={{ fontSize: '11px', fontWeight: '600', color: '#64748b' }}>Trip Remarks</label>
+              <textarea name="remarks" value={formData.remarks || ''} onChange={handleChange} rows={2} style={{ padding: '8px', border: '1px solid #cbd5e1', borderRadius: '4px', resize: 'vertical' }} />
+          </div>
+
+          <h3 style={{ fontSize: '14px', borderBottom: '1px solid #e2e8f0', paddingBottom: '10px', marginBottom: '15px', color: '#334155' }}>4. Own Vehicle / On-road Expenses</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '15px', backgroundColor: '#f8fafc', padding: '15px', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '20px' }}>
+              <FormGroup label="RTO / PC (Rs.)" name="rtoPc" type="number" value={formData.rtoPc} onChange={handleChange} />
+              <FormGroup label="Parking (Rs.)" name="parking" type="number" value={formData.parking} onChange={handleChange} />
+              <FormGroup label="Loading (Rs.)" name="loading" type="number" value={formData.loading} onChange={handleChange} />
+              <FormGroup label="Unloading (Rs.)" name="unloading" type="number" value={formData.unloading} onChange={handleChange} />
+              <FormGroup label="Other Trip Expense (Rs.)" name="otherBillsAmount" type="number" value={formData.otherBillsAmount} onChange={handleChange} />
+              <FormGroup label="Other Expense Description" name="otherBillsDesc" value={formData.otherBillsDesc} onChange={handleChange} />
           </div>
 
           {/* TOTALS BAR */}

@@ -280,7 +280,9 @@ model Trip {
   vendorExtraSizeRate   Float     @default(0) 
   vendorExtraSizeCharge Float     @default(0) 
   commission            Float     @default(0)
+  otherDeduction        Float     @default(0)
   netTruckPayout        Float     @default(0)
+  remarks               String?
 
   // ========================================
   // DRIVER ON-ROAD EXPENSES (Filled at Payroll)
