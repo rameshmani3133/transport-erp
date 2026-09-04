@@ -338,6 +338,7 @@ model Invoice {
   gstPercent      Float             @default(0)
   declaration     String?
   showStatus      Boolean           @default(false)
+  showRoundOff    Boolean           @default(true)
   date            DateTime          @default(now())
   dueDate         DateTime?
   locationId      Int

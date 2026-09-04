@@ -101,6 +101,7 @@ const initialInvoice = {
   productService: 'Transport Charges',
   declaration: 'I/we have taken registration under the CGST Act, 2017 and have exercised the option to pay tax on services of GTA in relation to transport of goods supplied by us under forward charge.',
   showStatus: false,
+  showRoundOff: true,
   date: today(),
   dueDate: '',
   locationId: '',
@@ -335,6 +336,7 @@ export default function Billing() {
       productService: invoice.productService || 'Transport Charges',
       declaration: invoice.declaration || initialInvoice.declaration,
       showStatus: Boolean(invoice.showStatus),
+      showRoundOff: invoice.showRoundOff !== false,
       date: inputDate(invoice.date),
       dueDate: inputDate(invoice.dueDate),
       locationId: invoice.locationId ? String(invoice.locationId) : '',
@@ -459,7 +461,7 @@ export default function Billing() {
                 : invoice.gstType === 'CGST_SGST'
                 ? `<tr><td colspan="3" class="right">CGST ${num(invoice.gstPercent) / 2}%</td><td class="right">${num(invoice.cgst).toFixed(2)}</td></tr><tr><td colspan="3" class="right">SGST ${num(invoice.gstPercent) / 2}%</td><td class="right">${num(invoice.sgst).toFixed(2)}</td></tr>`
                 : `<tr><td colspan="3" class="right">${gstLabel} ${num(invoice.gstPercent)}%</td><td class="right">${num(invoice.igst).toFixed(2)}</td></tr>`}
-              ${invoiceRoundOff(invoice) !== 0 ? `<tr><td colspan="3" class="right">Round Off</td><td class="right">${invoiceRoundOff(invoice).toFixed(2)}</td></tr>` : ''}
+              ${invoice.showRoundOff !== false && invoiceRoundOff(invoice) !== 0 ? `<tr><td colspan="3" class="right">Round Off</td><td class="right">${invoiceRoundOff(invoice).toFixed(2)}</td></tr>` : ''}
               <tr class="strong"><td colspan="3" class="right">Total</td><td class="right">${num(invoice.grandTotal).toFixed(2)}</td></tr>
             </tbody></table>
             <div class="words"><strong>Rupees:</strong> ${escapeHtml(amountInWords(invoice.grandTotal))}</div>
@@ -610,7 +612,7 @@ export default function Billing() {
                     <tr><td>SGST (${sgstPercent}%)</td><td class="right">${money(invoice.sgst)}</td></tr>
                     <tr><td>IGST (${igstPercent}%)</td><td class="right">${money(invoice.igst)}</td></tr>
                     <tr><td>Other Charges</td><td class="right">${money(invoice.otherCharges)}</td></tr>
-                    ${invoiceRoundOff(invoice) !== 0 ? `<tr><td>Round Off</td><td class="right">${money(invoiceRoundOff(invoice))}</td></tr>` : ''}
+                    ${invoice.showRoundOff !== false && invoiceRoundOff(invoice) !== 0 ? `<tr><td>Round Off</td><td class="right">${money(invoiceRoundOff(invoice))}</td></tr>` : ''}
                     <tr class="grand"><td>Grand Total</td><td class="right">${money(invoice.grandTotal)}</td></tr>
                     <tr><td>Advance Received</td><td class="right">${money(invoice.advanceReceived)}</td></tr>
                     <tr><td>Total Paid</td><td class="right">${money(invoice.totalPaid)}</td></tr>
@@ -903,6 +905,10 @@ export default function Billing() {
             <input id="showStatus" type="checkbox" checked={formData.showStatus} onChange={e => setFormData({ ...formData, showStatus: e.target.checked })} />
             <label htmlFor="showStatus" style={{ fontSize: '12px', fontWeight: 700, color: '#475569' }}>Show status on invoice</label>
           </div>}
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px', paddingBottom: '8px' }}>
+            <input id="showRoundOff" type="checkbox" checked={formData.showRoundOff} onChange={e => setFormData({ ...formData, showRoundOff: e.target.checked })} />
+            <label htmlFor="showRoundOff" style={{ fontSize: '12px', fontWeight: 700, color: '#475569' }}>Show round off on printed invoice</label>
+          </div>
           {!isManualTaxInvoice && <div style={{ gridColumn: '1 / -1' }}>
             <Field label="Invoice Description">
               <input type="text" name="description" value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} placeholder="Freight charges as per annexure" style={fieldStyle} />
