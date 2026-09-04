@@ -291,7 +291,7 @@ export default function Billing() {
     const rate = num(gstPercent);
     const totalTax = roundMoney(subTotal * rate / 100);
     const cgst = gstType === 'CGST_SGST' ? roundMoney(totalTax / 2) : 0;
-    const sgst = gstType === 'CGST_SGST' ? roundMoney(totalTax - cgst) : 0;
+    const sgst = gstType === 'CGST_SGST' ? cgst : 0;
     const igst = gstType === 'IGST' ? totalTax : 0;
     const otherCharges = isManualTaxInvoice ? 0 : num(formData.otherCharges);
     const grandTotal = roundMoney(subTotal + cgst + sgst + igst + otherCharges);
