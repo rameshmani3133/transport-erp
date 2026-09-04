@@ -61,6 +61,7 @@ async function buildInvoiceLedgerEntries(tx, req, invoice, selectedTrips, d, inv
     const igst = toNumber(invoice.igst);
     const otherCharges = toNumber(invoice.otherCharges);
     const grandTotal = toNumber(invoice.grandTotal);
+    const roundOff = roundMoney(grandTotal - roundMoney(subTotal + cgst + sgst + igst + otherCharges));
     const ledgerEntries = [
         {
             date: invoice.date,
@@ -76,7 +77,7 @@ async function buildInvoiceLedgerEntries(tx, req, invoice, selectedTrips, d, inv
             tenantKey: req.tenantKey,
             accountId: toRequiredInt(d.incomeAccountId, 'Income account'),
             type: 'Cr',
-            amount: subTotal + otherCharges,
+            amount: roundMoney(subTotal + otherCharges),
             narration: `Freight Income for Invoice ${invoiceNo}`,
             invoiceId: invoice.id
         }
@@ -85,6 +86,7 @@ async function buildInvoiceLedgerEntries(tx, req, invoice, selectedTrips, d, inv
     if (cgst > 0) ledgerEntries.push({ date: invoice.date, tenantKey: req.tenantKey, accountId: standardAccounts['Output CGST'].id, type: 'Cr', amount: cgst, narration: `Output CGST for Invoice ${invoiceNo}`, invoiceId: invoice.id });
     if (sgst > 0) ledgerEntries.push({ date: invoice.date, tenantKey: req.tenantKey, accountId: standardAccounts['Output SGST'].id, type: 'Cr', amount: sgst, narration: `Output SGST for Invoice ${invoiceNo}`, invoiceId: invoice.id });
     if (igst > 0) ledgerEntries.push({ date: invoice.date, tenantKey: req.tenantKey, accountId: standardAccounts['Output IGST'].id, type: 'Cr', amount: igst, narration: `Output IGST for Invoice ${invoiceNo}`, invoiceId: invoice.id });
+    if (roundOff !== 0) ledgerEntries.push({ date: invoice.date, tenantKey: req.tenantKey, accountId: standardAccounts['Round Off'].id, type: roundOff > 0 ? 'Cr' : 'Dr', amount: Math.abs(roundOff), narration: `Round Off for Invoice ${invoiceNo}`, invoiceId: invoice.id });
 
     const dieselByClient = selectedTrips.reduce((sum, trip) => sum + toNumber(trip.dieselAmount), 0);
     if (dieselByClient > 0 && selectedTrips[0]) {
@@ -101,16 +103,17 @@ async function buildInvoiceLedgerEntries(tx, req, invoice, selectedTrips, d, inv
 }
 
 function invoiceTotals(selectedTrips, d, gstType) {
-    const subTotal = selectedTrips.reduce((sum, trip) => sum + toNumber(trip.totalClientBill), 0);
+    const subTotal = roundMoney(selectedTrips.reduce((sum, trip) => sum + toNumber(trip.totalClientBill), 0));
     const rate = Math.max(toNumber(d.gstPercent), 0);
     const totalTax = roundMoney(subTotal * rate / 100);
-    const cgst = gstType === 'CGST_SGST' ? roundMoney(totalTax / 2) : 0;
+    const cgst = gstType === 'CGST_SGST' ? roundMoney(subTotal * (rate / 2) / 100) : 0;
     const sgst = gstType === 'CGST_SGST' ? cgst : 0;
     const igst = gstType === 'IGST' ? totalTax : 0;
-    const otherCharges = toNumber(d.otherCharges);
-    const grandTotal = roundMoney(subTotal + cgst + sgst + igst + otherCharges);
-    const advanceReceived = selectedTrips.reduce((sum, trip) => sum + toNumber(trip.clientAdvanceAmount), 0);
-    return { subTotal, cgst, sgst, igst, otherCharges, grandTotal, advanceReceived };
+    const otherCharges = roundMoney(toNumber(d.otherCharges));
+    const grandTotal = roundMoney(subTotal + totalTax + otherCharges);
+    const roundOff = roundMoney(grandTotal - roundMoney(subTotal + cgst + sgst + igst + otherCharges));
+    const advanceReceived = roundMoney(selectedTrips.reduce((sum, trip) => sum + toNumber(trip.clientAdvanceAmount), 0));
+    return { subTotal, cgst, sgst, igst, roundOff, otherCharges, grandTotal, advanceReceived };
 }
 
 function ioclInvoiceTotals(d) {
@@ -188,7 +191,7 @@ router.post('/', async (req, res) => {
             const taxData = { ...d, gstType: resolvedGstType };
             const totals = isManualTaxInvoice ? ioclInvoiceTotals(taxData) : invoiceTotals(selectedTrips, taxData, resolvedGstType);
             const { subTotal, cgst, sgst, igst, otherCharges, grandTotal, advanceReceived } = totals;
-            const balanceAmount = Math.max(grandTotal - advanceReceived, 0);
+            const balanceAmount = roundMoney(Math.max(grandTotal - advanceReceived, 0));
 
             const invoice = await tx.invoice.create({
                 data: {
@@ -288,7 +291,7 @@ router.put('/:id', async (req, res) => {
             const { subTotal, cgst, sgst, igst, otherCharges, grandTotal, advanceReceived } = totals;
             const paymentTotal = existing.payments.reduce((sum, p) => sum + toNumber(p.amount), 0);
             const totalPaid = advanceReceived + paymentTotal;
-            const balanceAmount = Math.max(grandTotal - totalPaid, 0);
+            const balanceAmount = roundMoney(Math.max(grandTotal - totalPaid, 0));
 
             const invoice = await tx.invoice.update({
                 where: { id: invId },

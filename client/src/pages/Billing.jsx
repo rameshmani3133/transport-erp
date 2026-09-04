@@ -4,6 +4,7 @@ import DataTable from '../components/DataTable';
 const today = () => new Date().toISOString().split('T')[0];
 const num = (value) => Number(value || 0);
 const roundMoney = (value) => Math.round((num(value) + Number.EPSILON) * 100) / 100;
+const invoiceRoundOff = (invoice) => roundMoney(num(invoice.grandTotal) - roundMoney(num(invoice.subTotal) + num(invoice.cgst) + num(invoice.sgst) + num(invoice.igst) + num(invoice.otherCharges)));
 const money = (value) => `Rs.${num(value).toFixed(2)}`;
 const formatDate = (value) => value ? new Date(value).toLocaleDateString() : '-';
 const inputDate = (value) => value ? new Date(value).toISOString().split('T')[0] : '';
@@ -109,6 +110,7 @@ const initialInvoice = {
   cgst: 0,
   sgst: 0,
   igst: 0,
+  roundOff: 0,
   otherCharges: 0,
   grandTotal: 0,
   advanceReceived: 0,
@@ -286,18 +288,19 @@ export default function Billing() {
 
   useEffect(() => {
     const subTotal = isManualTaxInvoice
-      ? Math.max(num(formData.taxableAmount), 0)
-      : selectedTrips.reduce((sum, trip) => sum + num(trip.totalClientBill), 0);
+      ? roundMoney(Math.max(num(formData.taxableAmount), 0))
+      : roundMoney(selectedTrips.reduce((sum, trip) => sum + num(trip.totalClientBill), 0));
     const rate = num(gstPercent);
     const totalTax = roundMoney(subTotal * rate / 100);
-    const cgst = gstType === 'CGST_SGST' ? roundMoney(totalTax / 2) : 0;
+    const cgst = gstType === 'CGST_SGST' ? roundMoney(subTotal * (rate / 2) / 100) : 0;
     const sgst = gstType === 'CGST_SGST' ? cgst : 0;
     const igst = gstType === 'IGST' ? totalTax : 0;
-    const otherCharges = isManualTaxInvoice ? 0 : num(formData.otherCharges);
-    const grandTotal = roundMoney(subTotal + cgst + sgst + igst + otherCharges);
-    const advanceReceived = isManualTaxInvoice ? 0 : selectedTrips.reduce((sum, trip) => sum + num(trip.clientAdvanceAmount), 0);
-    const balanceAmount = Math.max(grandTotal - advanceReceived, 0);
-    setFormData(prev => ({ ...prev, subTotal, cgst, sgst, igst, grandTotal, advanceReceived, balanceAmount }));
+    const otherCharges = isManualTaxInvoice ? 0 : roundMoney(num(formData.otherCharges));
+    const grandTotal = roundMoney(subTotal + totalTax + otherCharges);
+    const roundOff = roundMoney(grandTotal - roundMoney(subTotal + cgst + sgst + igst + otherCharges));
+    const advanceReceived = isManualTaxInvoice ? 0 : roundMoney(selectedTrips.reduce((sum, trip) => sum + num(trip.clientAdvanceAmount), 0));
+    const balanceAmount = roundMoney(Math.max(grandTotal - advanceReceived, 0));
+    setFormData(prev => ({ ...prev, subTotal, cgst, sgst, igst, roundOff, grandTotal, advanceReceived, balanceAmount }));
   }, [selectedTrips, formData.otherCharges, formData.taxableAmount, gstType, gstPercent, isManualTaxInvoice]);
 
   const resetForm = () => {
@@ -339,6 +342,7 @@ export default function Billing() {
       cgst: num(invoice.cgst),
       sgst: num(invoice.sgst),
       igst: num(invoice.igst),
+      roundOff: invoiceRoundOff(invoice),
       otherCharges: num(invoice.otherCharges),
       grandTotal: num(invoice.grandTotal),
       advanceReceived: num(invoice.advanceReceived),
@@ -455,6 +459,7 @@ export default function Billing() {
                 : invoice.gstType === 'CGST_SGST'
                 ? `<tr><td colspan="3" class="right">CGST ${num(invoice.gstPercent) / 2}%</td><td class="right">${num(invoice.cgst).toFixed(2)}</td></tr><tr><td colspan="3" class="right">SGST ${num(invoice.gstPercent) / 2}%</td><td class="right">${num(invoice.sgst).toFixed(2)}</td></tr>`
                 : `<tr><td colspan="3" class="right">${gstLabel} ${num(invoice.gstPercent)}%</td><td class="right">${num(invoice.igst).toFixed(2)}</td></tr>`}
+              ${invoiceRoundOff(invoice) !== 0 ? `<tr><td colspan="3" class="right">Round Off</td><td class="right">${invoiceRoundOff(invoice).toFixed(2)}</td></tr>` : ''}
               <tr class="strong"><td colspan="3" class="right">Total</td><td class="right">${num(invoice.grandTotal).toFixed(2)}</td></tr>
             </tbody></table>
             <div class="words"><strong>Rupees:</strong> ${escapeHtml(amountInWords(invoice.grandTotal))}</div>
@@ -605,6 +610,7 @@ export default function Billing() {
                     <tr><td>SGST (${sgstPercent}%)</td><td class="right">${money(invoice.sgst)}</td></tr>
                     <tr><td>IGST (${igstPercent}%)</td><td class="right">${money(invoice.igst)}</td></tr>
                     <tr><td>Other Charges</td><td class="right">${money(invoice.otherCharges)}</td></tr>
+                    ${invoiceRoundOff(invoice) !== 0 ? `<tr><td>Round Off</td><td class="right">${money(invoiceRoundOff(invoice))}</td></tr>` : ''}
                     <tr class="grand"><td>Grand Total</td><td class="right">${money(invoice.grandTotal)}</td></tr>
                     <tr><td>Advance Received</td><td class="right">${money(invoice.advanceReceived)}</td></tr>
                     <tr><td>Total Paid</td><td class="right">${money(invoice.totalPaid)}</td></tr>
