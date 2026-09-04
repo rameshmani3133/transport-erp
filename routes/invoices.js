@@ -126,6 +126,7 @@ function invoiceFormatData(d, location) {
             ? [...new Set((Array.isArray(d.vehicleNos) ? d.vehicleNos : []).map(value => text(value, null)).filter(Boolean))].join(', ') || null
             : text(d.vehicleNo, null) || null,
         productService: text(d.productService, null) || null,
+        stateOfficeCode: text(d.stateOfficeCode, null) || location.stateOfficeCode || null,
         gstType: text(d.gstType, null) || null,
         gstPercent: Math.max(toNumber(d.gstPercent), 0),
         declaration: text(d.declaration, null) || null
@@ -175,6 +176,7 @@ router.post('/', async (req, res) => {
             if (!isManualTaxInvoice && !selectedTrips.length) throw new Error('Please select at least one trip to bill.');
             if (isManualTaxInvoice && !text(d.invoiceNo)) throw new Error('Invoice number is required.');
             if (isManualTaxInvoice && toNumber(d.taxableAmount) <= 0) throw new Error('Taxable amount must be greater than zero.');
+            if (location.invoiceFormat === 'IOCL INVOICE' && !text(d.stateOfficeCode, null) && !text(location.stateOfficeCode, null)) throw new Error('State office code is required for IOCL invoice.');
             if (location.invoiceFormat === 'LPG Bill' && !text(d.productService)) throw new Error('LPG invoice description is required.');
             if (selectedTrips.some(trip => trip.companyId !== location.companyId)) throw new Error('All selected trips must belong to the selected billing location client.');
             const invoiceNo = await resolveInvoiceNo(tx, req, d, location.companyId);
@@ -246,6 +248,7 @@ router.put('/:id', async (req, res) => {
             if (!isManualTaxInvoice && !tripIds.length) throw new Error('Please select at least one trip to bill.');
             if (isManualTaxInvoice && !text(d.invoiceNo)) throw new Error('Invoice number is required.');
             if (isManualTaxInvoice && toNumber(d.taxableAmount) <= 0) throw new Error('Taxable amount must be greater than zero.');
+            if (location.invoiceFormat === 'IOCL INVOICE' && !text(d.stateOfficeCode, null) && !text(location.stateOfficeCode, null)) throw new Error('State office code is required for IOCL invoice.');
             if (location.invoiceFormat === 'LPG Bill' && !text(d.productService)) throw new Error('LPG invoice description is required.');
 
             const selectedTrips = tripIds.length ? await tx.trip.findMany({

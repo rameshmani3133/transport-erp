@@ -40,6 +40,7 @@ router.post('/', async (req, res) => {
                     tenantKey: req.tenantKey,
                     address: req.body.address || null,
                     gstNumber: req.body.gstNumber || null,
+                    stateOfficeCode: text(req.body.stateOfficeCode, null) || null,
                     invoiceFormat: req.body.invoiceFormat || 'Standard',
                     companyId
                 }
@@ -65,6 +66,7 @@ router.put('/:id', async (req, res) => {
                     locationName: text(req.body.locationName),
                     address: req.body.address || null,
                     gstNumber: req.body.gstNumber || null,
+                    stateOfficeCode: text(req.body.stateOfficeCode, null) || null,
                     invoiceFormat: req.body.invoiceFormat || 'Standard',
                     companyId
                 }

@@ -43,6 +43,19 @@ const multilineAddressHtml = (value, autoWrap = false) => {
   if (current) lines.push(current);
   return lines.map(escapeHtml).join('<br>');
 };
+const GST_STATE_NAMES = {
+  '01': 'Jammu and Kashmir', '02': 'Himachal Pradesh', '03': 'Punjab', '04': 'Chandigarh', '05': 'Uttarakhand',
+  '06': 'Haryana', '07': 'Delhi', '08': 'Rajasthan', '09': 'Uttar Pradesh', '10': 'Bihar', '11': 'Sikkim',
+  '12': 'Arunachal Pradesh', '13': 'Nagaland', '14': 'Manipur', '15': 'Mizoram', '16': 'Tripura', '17': 'Meghalaya',
+  '18': 'Assam', '19': 'West Bengal', '20': 'Jharkhand', '21': 'Odisha', '22': 'Chhattisgarh', '23': 'Madhya Pradesh',
+  '24': 'Gujarat', '26': 'Dadra and Nagar Haveli and Daman and Diu', '27': 'Maharashtra', '29': 'Karnataka',
+  '30': 'Goa', '31': 'Lakshadweep', '32': 'Kerala', '33': 'Tamil Nadu', '34': 'Puducherry',
+  '35': 'Andaman and Nicobar Islands', '36': 'Telangana', '37': 'Andhra Pradesh', '38': 'Ladakh', '97': 'Other Territory'
+};
+const gstLocation = (gstNumber) => {
+  const stateCode = String(gstNumber || '').trim().slice(0, 2);
+  return { stateCode: GST_STATE_NAMES[stateCode] ? stateCode : '-', stateName: GST_STATE_NAMES[stateCode] || '-' };
+};
 
 function amountInWords(value) {
   const numericValue = Math.max(num(value), 0);
@@ -77,6 +90,7 @@ const initialInvoice = {
   sacCode: '',
   vendorCode: '',
   poMigo: '',
+  stateOfficeCode: '',
   taxableAmount: '',
   periodFrom: '',
   periodTo: '',
@@ -135,7 +149,7 @@ export default function Billing() {
   const [filterFromLoc, setFilterFromLoc] = useState('');
   const [filterToLoc, setFilterToLoc] = useState('');
   const [quickClientName, setQuickClientName] = useState('');
-  const [quickLocation, setQuickLocation] = useState({ locationName: '', address: '', gstNumber: '', invoiceFormat: 'Standard' });
+  const [quickLocation, setQuickLocation] = useState({ locationName: '', address: '', gstNumber: '', stateOfficeCode: '', invoiceFormat: 'Standard' });
   const [setupSaving, setSetupSaving] = useState(false);
   const [setupError, setSetupError] = useState('');
 
@@ -202,8 +216,8 @@ export default function Billing() {
       const client = companies.find(item => String(item.id) === String(selectedClientId));
       const location = { ...created, company: client || created.company };
       setLocations(previous => [location, ...previous.filter(item => item.id !== location.id)]);
-      setFormData(previous => ({ ...initialInvoice, locationId: String(location.id), vendorCode: client?.vendorCode || '', clientAccountId: previous.clientAccountId, incomeAccountId: previous.incomeAccountId }));
-      setQuickLocation({ locationName: '', address: '', gstNumber: '', invoiceFormat: 'Standard' });
+      setFormData(previous => ({ ...initialInvoice, locationId: String(location.id), vendorCode: client?.vendorCode || '', stateOfficeCode: location.stateOfficeCode || '', clientAccountId: previous.clientAccountId, incomeAccountId: previous.incomeAccountId }));
+      setQuickLocation({ locationName: '', address: '', gstNumber: '', stateOfficeCode: '', invoiceFormat: 'Standard' });
       await fetchData();
     } catch (error) {
       setSetupError(error.message);
@@ -213,6 +227,7 @@ export default function Billing() {
   };
 
   const selectedLocation = locations.find(l => String(l.id) === String(formData.locationId));
+  const selectedGstLocation = gstLocation(selectedLocation?.gstNumber);
   const isIocl = selectedLocation?.invoiceFormat === 'IOCL INVOICE';
   const isLpg = selectedLocation?.invoiceFormat === 'LPG Bill';
   const isManualTaxInvoice = isIocl || isLpg;
@@ -291,6 +306,7 @@ export default function Billing() {
       sacCode: invoice.sacCode || '',
       vendorCode: invoice.vendorCode || '',
       poMigo: invoice.poMigo || '',
+      stateOfficeCode: invoice.stateOfficeCode || invoice.location?.stateOfficeCode || '',
       taxableAmount: num(invoice.subTotal),
       periodFrom: inputDate(invoice.periodFrom),
       periodTo: inputDate(invoice.periodTo),
@@ -395,7 +411,7 @@ export default function Billing() {
     if (isStandaloneTaxInvoice) {
       const gstLabel = invoice.gstType === 'CGST_SGST' ? 'CGST + SGST' : 'IGST';
       const supplierStateCode = String(profile.gstNumber || '').slice(0, 2) || '-';
-      const receiverStateCode = String(invoice.location?.gstNumber || '').slice(0, 2) || '-';
+      const receiverState = gstLocation(invoice.location?.gstNumber);
       const formatTitle = invoice.invoiceFormat === 'LPG Bill' ? 'LPG Invoice' : 'IOCL Invoice';
       const isIoclInvoice = invoice.invoiceFormat === 'IOCL INVOICE';
       const supplierAddressHtml = multilineAddressHtml(supplierAddress, isIoclInvoice);
@@ -406,7 +422,7 @@ export default function Billing() {
         <html><head><title>${escapeHtml(invoice.invoiceNo)} - ${formatTitle}</title><style>
           @page { size:A4 portrait; margin:10mm } *{box-sizing:border-box} body{font-family:Arial,sans-serif;color:#111;margin:0;font-size:12px}
           .head{display:grid;grid-template-columns:minmax(0,1fr) 220px;gap:20px;align-items:start;padding:8px 16px 18px;border-bottom:3px double #222}.head h1{font-size:28px;letter-spacing:3px;margin:0;text-transform:uppercase}.addr{line-height:1.4;width:220px;font-size:11px;overflow-wrap:anywhere}.multiline{white-space:pre-line;overflow-wrap:anywhere}.receiver-address{margin:2px 0 5px;padding-left:0;line-height:1.55}
-          .box{border:1px solid #222;margin-top:24px}.title{text-align:center;font-size:20px;font-weight:800;padding:8px;border-bottom:1px solid #222}.grid{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid #222}.cell{padding:10px;line-height:1.8}.cell+ .cell{border-left:1px solid #222}
+          .box{border:1px solid #222;margin-top:24px}.title{text-align:center;font-size:20px;font-weight:800;padding:8px;border-bottom:1px solid #222}.grid{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid #222}.cell{padding:10px;line-height:1.8}.cell+ .cell{border-left:1px solid #222}.receiver-state{display:grid;grid-template-columns:1fr 110px 1.25fr;gap:10px;margin-top:5px;padding-top:5px;border-top:1px solid #aaa}
           .receiver{padding:8px;border-bottom:1px solid #222;line-height:1.65}.receiver h3{margin:0 0 7px}.items{width:100%;border-collapse:collapse}.items th,.items td{border:1px solid #444;padding:9px}.items th{background:#e5e7eb}.right{text-align:right}.center{text-align:center}.strong{font-weight:800;font-size:15px}
           .words,.declaration{padding:10px;border-top:1px solid #222}.declaration{min-height:150px}.sign{text-align:right;margin-top:35px;font-weight:700}
         </style></head><body>
@@ -414,7 +430,7 @@ export default function Billing() {
           <div class="box"><div class="title">TAX INVOICE</div>
             <div class="grid"><div class="cell"><strong>Invoice No:</strong> ${escapeHtml(invoice.invoiceNo)}<br><strong>Invoice Date:</strong> ${escapeHtml(formatDate(invoice.date))}<br><strong>State Code:</strong> ${escapeHtml(supplierStateCode)}<br><strong>GST:</strong> ${escapeHtml(profile.gstNumber || '-')}</div>
             <div class="cell"><strong>Transportation Mode:</strong> ${escapeHtml(invoice.transportationMode || 'By Road')}<br><strong>Vehicle No:</strong><div style="padding-left:12px">${vehicleNumberHtml}</div><strong>Vendor Code:</strong> ${escapeHtml(invoice.vendorCode || invoice.location?.company?.vendorCode || '-')}<br><strong>Period:</strong> ${escapeHtml(formatDate(invoice.periodFrom))} to ${escapeHtml(formatDate(invoice.periodTo))}</div></div>
-            <div class="receiver"><h3>Details of Receiver / Billed to</h3><strong>Name:</strong> ${escapeHtml(clientName)}<br><strong>Address:</strong><div class="receiver-address">${receiverAddressHtml}</div><strong>GSTIN:</strong> ${escapeHtml(invoice.location?.gstNumber || '-')}<br><strong>State Code:</strong> ${escapeHtml(receiverStateCode)}</div>
+            <div class="receiver"><h3>Details of Receiver / Billed to</h3><strong>Name:</strong> ${escapeHtml(clientName)}<br><strong>Address:</strong><div class="receiver-address">${receiverAddressHtml}</div><strong>GSTIN:</strong> ${escapeHtml(invoice.location?.gstNumber || '-')}<div class="receiver-state"><span><strong>State:</strong> ${escapeHtml(receiverState.stateName)}</span><span><strong>State Code:</strong> ${escapeHtml(receiverState.stateCode)}</span><span><strong>State Office Code:</strong> ${escapeHtml(invoice.stateOfficeCode || invoice.location?.stateOfficeCode || '-')}</span></div></div>
             <table class="items"><thead><tr><th style="width:12%">Slr No</th><th>Name of Product / Service</th><th style="width:18%">SAC</th><th style="width:24%">Total Amount (Rs.)</th></tr></thead><tbody>
               <tr><td class="center">1</td><td>${escapeHtml(invoice.productService || 'Transport Charges')}</td><td class="center">${escapeHtml(invoice.sacCode || '-')}</td><td class="right">${num(invoice.subTotal).toFixed(2)}</td></tr>
               <tr class="strong"><td colspan="3" class="right">Sub Total</td><td class="right">${num(invoice.subTotal).toFixed(2)}</td></tr>
@@ -665,6 +681,7 @@ export default function Billing() {
     { header: 'Invoice No', key: 'invoiceNo', render: (inv) => <strong>{inv.invoiceNo}</strong> },
     { header: 'Date', key: 'date', render: (inv) => formatDate(inv.date) },
     { header: 'Location', key: 'location.locationName', render: (inv) => inv.location?.locationName || 'N/A' },
+    { header: 'State Office Code', key: 'stateOfficeCode', render: (inv) => inv.stateOfficeCode || inv.location?.stateOfficeCode || '-' },
     { header: 'Description', key: 'description', render: (inv) => inv.description || '-' },
     { header: 'SAC Code', key: 'sacCode', render: (inv) => inv.sacCode || '-' },
     { header: 'Vendor Code', key: 'vendorCode', render: (inv) => inv.vendorCode || inv.location?.company?.vendorCode || '-' },
@@ -716,7 +733,8 @@ export default function Billing() {
                 clientAccountId: formData.clientAccountId,
                 incomeAccountId: formData.incomeAccountId,
                 locationId: event.target.value,
-                vendorCode: location?.company?.vendorCode || ''
+                vendorCode: location?.company?.vendorCode || '',
+                stateOfficeCode: location?.stateOfficeCode || ''
               });
               setSelectedTripIds([]);
             }} style={fieldStyle}>
@@ -731,6 +749,7 @@ export default function Billing() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '10px' }}>
             <input value={quickLocation.locationName} onChange={event => setQuickLocation(previous => ({ ...previous, locationName: event.target.value }))} placeholder="Branch / location name" style={fieldStyle} />
             <input value={quickLocation.gstNumber} onChange={event => setQuickLocation(previous => ({ ...previous, gstNumber: event.target.value.toUpperCase() }))} placeholder="Client GSTIN" style={fieldStyle} />
+            <input value={quickLocation.stateOfficeCode} onChange={event => setQuickLocation(previous => ({ ...previous, stateOfficeCode: event.target.value }))} placeholder="State Office Code (IOCL)" style={fieldStyle} />
             <select value={quickLocation.invoiceFormat} onChange={event => setQuickLocation(previous => ({ ...previous, invoiceFormat: event.target.value }))} style={fieldStyle}>
               <option value="Standard">Standard Combined Trips</option>
               <option value="IOCL INVOICE">IOCL INVOICE</option>
@@ -817,6 +836,11 @@ export default function Billing() {
                 </select>
               )}
             </Field>
+            {isIocl && <>
+              <Field label="Receiver State (from GSTIN)"><input value={selectedGstLocation.stateName} readOnly style={{ ...fieldStyle, backgroundColor: '#f1f5f9' }} /></Field>
+              <Field label="State Code (from GSTIN)"><input value={selectedGstLocation.stateCode} readOnly style={{ ...fieldStyle, backgroundColor: '#f1f5f9' }} /></Field>
+              <Field label="State Office Code"><input type="text" value={formData.stateOfficeCode} onChange={e => setFormData({ ...formData, stateOfficeCode: e.target.value })} placeholder="Enter state office code" required style={fieldStyle} /></Field>
+            </>}
           </>}
           <Field label="Client Ledger - Dr">
             <select name="clientAccountId" value={formData.clientAccountId} onChange={e => setFormData({ ...formData, clientAccountId: e.target.value })} required style={{ ...fieldStyle, borderColor: '#bfdbfe', backgroundColor: '#eff6ff' }}>

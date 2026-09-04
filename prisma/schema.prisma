@@ -107,6 +107,7 @@ model BillingLocation {
   locationName  String            
   address       String?
   gstNumber     String?
+  stateOfficeCode String?
   invoiceFormat String            @default("Standard") 
   companyId     Int
   company       ClientCompany     @relation(fields: [companyId], references: [id])
@@ -326,6 +327,7 @@ model Invoice {
   sacCode         String?
   vendorCode      String?
   poMigo          String?
+  stateOfficeCode String?
   invoiceFormat   String            @default("Standard")
   periodFrom      DateTime?
   periodTo        DateTime?

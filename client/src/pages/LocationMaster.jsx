@@ -18,6 +18,7 @@ export default function LocationMaster() {
       locationName: '',
       address: '',
       gstNumber: '',
+      stateOfficeCode: '',
       invoiceFormat: 'Standard',
       companyId: ''
   };
@@ -48,6 +49,7 @@ export default function LocationMaster() {
           locationName: loc.locationName || '',
           address: loc.address || '',
           gstNumber: loc.gstNumber || '',
+          stateOfficeCode: loc.stateOfficeCode || '',
           invoiceFormat: loc.invoiceFormat || 'Standard',
           companyId: loc.companyId || ''
       });
@@ -100,6 +102,7 @@ export default function LocationMaster() {
       { header: 'Location Name', key: 'locationName', render: (l) => <strong>{l.locationName}</strong> },
       { header: 'Client Company', key: 'company.companyName', render: (l) => l.company?.companyName || 'N/A' },
       { header: 'GST Number', key: 'gstNumber', render: (l) => l.gstNumber || 'N/A' },
+      { header: 'State Office Code', key: 'stateOfficeCode', render: (l) => l.stateOfficeCode || 'N/A' },
       { header: 'Format', key: 'invoiceFormat', render: (l) => <span style={{ padding: '4px 8px', borderRadius: '4px', backgroundColor: '#f1f5f9', fontSize: '11px', fontWeight: 'bold' }}>{l.invoiceFormat}</span> },
       { header: 'Actions', key: 'actions', render: (l) => (
           <div style={{ display: 'flex', gap: '10px' }}>
@@ -132,6 +135,7 @@ export default function LocationMaster() {
 
               <FormGroup label="Branch / Location Name" name="locationName" value={formData.locationName} onChange={handleChange} required />
               <FormGroup label="GST Number" name="gstNumber" value={formData.gstNumber} onChange={handleChange} />
+              <FormGroup label="State Office Code (IOCL)" name="stateOfficeCode" value={formData.stateOfficeCode} onChange={handleChange} />
               
               <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
                   <label style={{ fontSize: '11px', fontWeight: '600', color: '#64748b' }}>Invoice Format</label>
