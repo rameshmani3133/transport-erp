@@ -115,6 +115,7 @@ function SortableReportTable({ rows, columns, title, tableTitle, exportExcel, ex
 export default function Reports() {
     const [activeTab, setActiveTab] = useState('summary');
     const [tripReportView, setTripReportView] = useState('vendor');
+    const [gstFilters, setGstFilters] = useState({ startDate: '', endDate: '', clientId: '', locationId: '', gstin: '', gstType: 'All', gstPercent: 'All', invoiceFormat: 'All', invoiceStatus: 'All', invoiceNo: '' });
     const [filters, setFilters] = useState({ clientId: '', startDate: '', endDate: '', group: 'All', loanPaymentStatus: 'All', loanStatus: 'All', voucherType: 'All', voucherStatus: 'All', vehicleId: '', ownershipType: 'All', partyName: '', tripStatus: 'All', invoiceState: 'All', settlementState: 'All', fromLocation: '', toLocation: '' });
     const [tripFilters, setTripFilters] = useState({ vehicleNo: [], ownershipType: [], partyName: [], fromLocation: [], toLocation: [], tripStatus: [], invoiceState: [], settlementState: [] });
     const [data, setData] = useState({ trips: [], tripReportRows: [], invoices: [], settlements: [], accounts: [], vehicles: [], clients: [], payments: [], loans: [], vouchers: [], loading: true });
@@ -180,6 +181,32 @@ export default function Reports() {
         if (filters.clientId && String(inv.location?.company?.id) !== String(filters.clientId)) return false;
         return true;
     }), [data.invoices, filters]);
+
+    const gstRows = useMemo(() => data.invoices.map(inv => ({
+        ...inv,
+        clientName: inv.location?.company?.companyName || '-',
+        billingLocation: inv.location?.locationName || '-',
+        billingGstin: inv.location?.gstNumber || '',
+        gstTypeLabel: Number(inv.gstPercent || 0) <= 0 ? 'GST 0%' : Number(inv.igst || 0) > 0 ? 'IGST' : 'CGST + SGST'
+    })).filter(inv => {
+        const invoiceDate = String(inv.date || '').slice(0, 10);
+        if (gstFilters.startDate && invoiceDate < gstFilters.startDate) return false;
+        if (gstFilters.endDate && invoiceDate > gstFilters.endDate) return false;
+        if (gstFilters.clientId && String(inv.location?.company?.id) !== gstFilters.clientId) return false;
+        if (gstFilters.locationId && String(inv.locationId) !== gstFilters.locationId) return false;
+        if (gstFilters.gstin && !inv.billingGstin.toLowerCase().includes(gstFilters.gstin.trim().toLowerCase())) return false;
+        if (gstFilters.gstType !== 'All' && inv.gstTypeLabel !== gstFilters.gstType) return false;
+        if (gstFilters.gstPercent !== 'All' && String(Number(inv.gstPercent || 0)) !== gstFilters.gstPercent) return false;
+        if (gstFilters.invoiceFormat !== 'All' && inv.invoiceFormat !== gstFilters.invoiceFormat) return false;
+        if (gstFilters.invoiceStatus !== 'All' && inv.status !== gstFilters.invoiceStatus) return false;
+        if (gstFilters.invoiceNo && !String(inv.invoiceNo || '').toLowerCase().includes(gstFilters.invoiceNo.trim().toLowerCase())) return false;
+        return true;
+    }), [data.invoices, gstFilters]);
+
+    const gstLocations = useMemo(() => {
+        const matchesClient = data.invoices.filter(inv => !gstFilters.clientId || String(inv.location?.company?.id) === gstFilters.clientId);
+        return [...new Map(matchesClient.filter(inv => inv.location).map(inv => [inv.location.id, inv.location])).values()];
+    }, [data.invoices, gstFilters.clientId]);
 
     const filteredAccounts = data.accounts.filter(a => filters.group === 'All' || a.accountGroup?.includes(filters.group));
     const filteredLoans = useMemo(() => data.loans.filter(loan => {
@@ -309,6 +336,22 @@ export default function Reports() {
         { header: 'Balance', key: 'balanceAmount', render: inv => <strong style={{ color: inv.balanceAmount > 0 ? '#b45309' : '#0f766e' }}>{money(inv.balanceAmount)}</strong>, exportValue: inv => inv.balanceAmount, total: true },
         { header: 'Status', key: 'status', render: inv => inv.status, exportValue: inv => inv.status }
     ];
+    const gstCols = [
+        { header: 'Invoice No', key: 'invoiceNo', render: inv => <strong>{inv.invoiceNo}</strong>, exportValue: inv => inv.invoiceNo, excelText: true, nowrap: true },
+        { header: 'Invoice Date', key: 'date', render: inv => dateText(inv.date), exportValue: inv => dateText(inv.date), nowrap: true },
+        { header: 'Client', key: 'clientName' },
+        { header: 'Billing Location', key: 'billingLocation' },
+        { header: 'Billing GSTIN', key: 'billingGstin', excelText: true, nowrap: true },
+        { header: 'GST Type', key: 'gstTypeLabel', nowrap: true },
+        { header: 'GST %', key: 'gstPercent', exportValue: inv => Number(inv.gstPercent || 0), align: 'right', nowrap: true },
+        amountColumn('Taxable Amount', 'subTotal'),
+        amountColumn('CGST', 'cgst'),
+        amountColumn('SGST', 'sgst'),
+        amountColumn('IGST', 'igst'),
+        amountColumn('Total Invoice Value', 'grandTotal'),
+        { header: 'Invoice Format', key: 'invoiceFormat' },
+        { header: 'Status', key: 'status' }
+    ];
     const accountCols = [
         { header: 'Account', key: 'accountName', render: a => <strong>{a.accountName}</strong>, exportValue: a => a.accountName },
         { header: 'Type', key: 'accountType', exportValue: a => a.accountType },
@@ -355,7 +398,7 @@ export default function Reports() {
         <div style={{ padding: '22px', maxWidth: '1500px', margin: '0 auto', background: '#f8fafc', minHeight: '100vh' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: '16px', alignItems: 'center', marginBottom: '18px', flexWrap: 'wrap' }}>
                 <div><h2 style={{ margin: 0, color: '#0f172a' }}>Reports Dashboard</h2><p style={{ margin: '4px 0 0', color: '#64748b', fontSize: '13px' }}>Ledger-backed finance, collections, trip margin, diesel mapping, and account audit.</p></div>
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>{['summary', 'trips', 'invoices', 'clients', 'loans', 'vouchers', 'accounts'].map(tab => <button key={tab} onClick={() => setActiveTab(tab)} style={{ padding: '9px 14px', border: 0, borderRadius: '6px', cursor: 'pointer', fontWeight: 800, background: activeTab === tab ? '#0f172a' : 'white', color: activeTab === tab ? 'white' : '#475569' }}>{tab[0].toUpperCase() + tab.slice(1)}</button>)}</div>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>{['summary', 'trips', 'invoices', 'gst', 'clients', 'loans', 'vouchers', 'accounts'].map(tab => <button key={tab} onClick={() => setActiveTab(tab)} style={{ padding: '9px 14px', border: 0, borderRadius: '6px', cursor: 'pointer', fontWeight: 800, background: activeTab === tab ? '#0f172a' : 'white', color: activeTab === tab ? 'white' : '#475569' }}>{tab === 'gst' ? 'GST Report' : tab[0].toUpperCase() + tab.slice(1)}</button>)}</div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '12px', marginBottom: '18px' }}>
                 <select value={filters.clientId} onChange={e => setFilters({ ...filters, clientId: e.target.value })} style={{ padding: '10px', border: '1px solid #cbd5e1', borderRadius: '6px' }}><option value="">All clients</option>{data.clients.map(c => <option key={c.id} value={c.id}>{c.companyName}</option>)}</select>
@@ -382,9 +425,23 @@ export default function Reports() {
                 <select value={filters.voucherType} onChange={e => setFilters({ ...filters, voucherType: e.target.value })} style={{ padding: '9px', border: '1px solid #cbd5e1', borderRadius: '6px' }}><option value="All">All voucher types</option>{[...new Set(data.vouchers.map(voucher => voucher.voucherType))].sort().map(type => <option key={type} value={type}>{type.replace(/_/g, ' ')}</option>)}</select>
                 <select value={filters.voucherStatus} onChange={e => setFilters({ ...filters, voucherStatus: e.target.value })} style={{ padding: '9px', border: '1px solid #cbd5e1', borderRadius: '6px' }}><option value="All">All voucher statuses</option><option value="Posted">Posted</option><option value="Reversed">Reversed</option></select>
             </div>}
+            {activeTab === 'gst' && <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(175px, 1fr))', gap: '10px', margin: '-6px 0 14px', padding: '12px', background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
+                <input type="date" value={gstFilters.startDate} onChange={e => setGstFilters({ ...gstFilters, startDate: e.target.value })} title="From date" />
+                <input type="date" value={gstFilters.endDate} onChange={e => setGstFilters({ ...gstFilters, endDate: e.target.value })} title="To date" />
+                <select value={gstFilters.clientId} onChange={e => setGstFilters({ ...gstFilters, clientId: e.target.value, locationId: '' })}><option value="">All clients</option>{data.clients.map(client => <option key={client.id} value={client.id}>{client.companyName}</option>)}</select>
+                <select value={gstFilters.locationId} onChange={e => setGstFilters({ ...gstFilters, locationId: e.target.value })}><option value="">All billing locations</option>{gstLocations.map(location => <option key={location.id} value={location.id}>{location.locationName} - {location.gstNumber || 'No GSTIN'}</option>)}</select>
+                <input value={gstFilters.gstin} onChange={e => setGstFilters({ ...gstFilters, gstin: e.target.value.toUpperCase() })} placeholder="Billing GSTIN" />
+                <select value={gstFilters.gstType} onChange={e => setGstFilters({ ...gstFilters, gstType: e.target.value })}><option>All</option><option>CGST + SGST</option><option>IGST</option><option>GST 0%</option></select>
+                <select value={gstFilters.gstPercent} onChange={e => setGstFilters({ ...gstFilters, gstPercent: e.target.value })}><option value="All">All GST rates</option>{[...new Set(data.invoices.map(inv => Number(inv.gstPercent || 0)))].sort((a, b) => a - b).map(rate => <option key={rate} value={rate}>{rate}%</option>)}</select>
+                <select value={gstFilters.invoiceFormat} onChange={e => setGstFilters({ ...gstFilters, invoiceFormat: e.target.value })}><option value="All">All invoice formats</option>{[...new Set(data.invoices.map(inv => inv.invoiceFormat || 'Standard'))].sort().map(format => <option key={format}>{format}</option>)}</select>
+                <select value={gstFilters.invoiceStatus} onChange={e => setGstFilters({ ...gstFilters, invoiceStatus: e.target.value })}><option value="All">All statuses</option>{[...new Set(data.invoices.map(inv => inv.status).filter(Boolean))].sort().map(status => <option key={status}>{status}</option>)}</select>
+                <input value={gstFilters.invoiceNo} onChange={e => setGstFilters({ ...gstFilters, invoiceNo: e.target.value })} placeholder="Invoice number" />
+                <button type="button" onClick={() => setGstFilters({ startDate: '', endDate: '', clientId: '', locationId: '', gstin: '', gstType: 'All', gstPercent: 'All', invoiceFormat: 'All', invoiceStatus: 'All', invoiceNo: '' })}>Clear GST filters</button>
+            </div>}
             {activeTab === 'summary' && <><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '14px', marginBottom: '18px' }}><StatCard label="Ledger Revenue" value={money(revenue)} tone="#2563eb" sub="Income ledger balance" /><StatCard label="Ledger Expenses" value={money(expenses)} tone="#dc2626" sub="Expense ledger balance" /><StatCard label="Gross Profit" value={money(grossProfit)} tone={grossProfit >= 0 ? '#0f766e' : '#dc2626'} sub={`Margin ${pct(margin)}`} /><StatCard label="Receivables" value={money(receivables)} tone="#b45309" sub="Open client ledger balance" /><StatCard label="Payables" value={money(payables)} tone="#7c3aed" sub="Vendor and pump creditors" /><StatCard label="Loan Outstanding" value={money(loanOutstanding)} tone="#9333ea" sub={`${dueLoans.length} loans not marked paid`} /><StatCard label="Monthly EMI" value={money(loanMonthlyEmi)} tone="#0f766e" sub="Active loan cash outflow" /><StatCard label="Diesel Control" value={money(dieselControl)} tone="#0f766e" sub="Client/vendor diesel subledgers" /><StatCard label="Output Tax" value={money(taxPayable)} tone="#475569" sub="Duties & Taxes" /></div><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '16px' }}><Section title="Collections Snapshot"><Bar label="Invoiced" value={invoiced} max={Math.max(invoiced, collected, 1)} color="#2563eb" /><Bar label="Collected incl. advances" value={collected} max={Math.max(invoiced, collected, 1)} color="#0f766e" /><Bar label="Unbilled trips" value={unbilled} max={Math.max(invoiced, unbilled, 1)} color="#b45309" /></Section><Section title="Loan Snapshot"><Bar label="Principal" value={loanPrincipal} max={Math.max(loanPrincipal, loanOutstanding, 1)} color="#7c3aed" /><Bar label="Outstanding" value={loanOutstanding} max={Math.max(loanPrincipal, loanOutstanding, 1)} color="#b45309" /><Bar label="Monthly EMI" value={loanMonthlyEmi} max={Math.max(loanPrincipal, loanMonthlyEmi, 1)} color="#0f766e" /></Section><Section title="Receivable Aging">{Object.entries(aging).map(([label, value]) => <Bar key={label} label={label} value={value} max={agingMax} color={label === '90+' ? '#dc2626' : '#0f766e'} />)}</Section><Section title="Top Client Outstanding">{clientRows.slice(0, 5).map(c => <Bar key={c.id} label={c.name} value={c.outstanding} max={Math.max(clientRows[0]?.outstanding || 1, 1)} color="#7c3aed" />)}</Section></div></>}
             {activeTab === 'trips' && <SortableReportTable rows={detailedTripRows} columns={tripCols} title={`Detailed_Trip_${tripReportView}_Report`} tableTitle={`${tripReportView === 'vendor' ? 'Vendor / Market Settlement' : tripReportView === 'client' ? 'Client Trip Statement' : 'Own Vehicle Performance'} (${detailedTripRows.length})`} defaultVisibleKeys={tripDefaultColumns} exportExcel={exportExcel} exportCsv={exportCsv} printReport={printReport} />}
             {activeTab === 'invoices' && <SortableReportTable rows={filteredInvoices} columns={invoiceCols} title="Invoice_Collections_Report" tableTitle="Invoice Collections" exportExcel={exportExcel} exportCsv={exportCsv} printReport={printReport} />}
+            {activeTab === 'gst' && <SortableReportTable rows={gstRows} columns={gstCols} title="GST_Invoice_Report" tableTitle={`GST Invoice Report (${gstRows.length})`} exportExcel={exportExcel} exportCsv={exportCsv} printReport={printReport} />}
             {activeTab === 'clients' && <SortableReportTable rows={clientRows} columns={clientCols} title="Client_Performance_Report" tableTitle="Client Performance" exportExcel={exportExcel} exportCsv={exportCsv} printReport={printReport} />}
             {activeTab === 'loans' && <SortableReportTable rows={filteredLoans} columns={loanCols} title="Loan_Tracking_Report" tableTitle="Loan Tracking" exportExcel={exportExcel} exportCsv={exportCsv} printReport={printReport} />}
             {activeTab === 'vouchers' && <SortableReportTable rows={filteredVouchers} columns={voucherCols} title="Voucher_Register_Report" tableTitle="Voucher Register" exportExcel={exportExcel} exportCsv={exportCsv} printReport={printReport} />}

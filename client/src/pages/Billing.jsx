@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import DataTable from '../components/DataTable';
+import { downloadStandardInvoicePdf } from '../utils/standardInvoicePdf';
 
 const today = () => new Date().toISOString().split('T')[0];
 const num = (value) => Number(value || 0);
@@ -531,17 +532,17 @@ export default function Billing() {
             @page annexure { size: A4 landscape; margin: 6mm; }
             * { box-sizing: border-box; }
             body { margin: 0; color: #111827; font-family: Arial, sans-serif; background: #fff; }
-            .summary-page { page: summary; min-height: 281mm; padding: 8mm; page-break-after: always; }
-            .annexure-page { page: annexure; padding: 6mm; }
+            .summary-page { page: summary; width: 194mm; height: 281mm; padding: 0; overflow: hidden; break-after: page; page-break-after: always; }
+            .annexure-page { page: annexure; width: 285mm; min-height: 198mm; padding: 0; overflow: hidden; }
             h1, h2, h3, p { margin: 0; }
-            .invoice-shell { border: 1.5px solid #111827; min-height: 265mm; display: flex; flex-direction: column; }
+            .invoice-shell { border: 1.5px solid #111827; height: 276mm; display: flex; flex-direction: column; overflow: hidden; }
             .invoice-title { text-align: center; font-size: 18px; font-weight: 900; padding: 7px 10px; border-bottom: 1.5px solid #111827; text-transform: uppercase; }
             .supplier { text-align: center; padding: 10px 16px; border-bottom: 1px solid #111827; }
             .supplier h1 { font-size: 24px; font-weight: 900; letter-spacing: 0; text-transform: uppercase; }
             .supplier p { font-size: 11px; line-height: 1.45; margin-top: 3px; }
             .multiline { white-space: pre-line; overflow-wrap: anywhere; }
             .meta-grid { display: grid; grid-template-columns: 1.25fr 0.75fr; border-bottom: 1px solid #111827; }
-            .party, .invoice-meta { padding: 10px 12px; min-height: 122px; }
+            .party, .invoice-meta { padding: 8px 10px; min-height: 105px; }
             .invoice-meta { border-left: 1px solid #111827; }
             .label { font-size: 10px; color: #475569; font-weight: 800; text-transform: uppercase; margin-bottom: 4px; }
             .name { font-size: 15px; font-weight: 900; text-transform: uppercase; }
@@ -551,17 +552,17 @@ export default function Billing() {
             .service-table, .totals { width: 100%; border-collapse: collapse; font-size: 12px; }
             .service-table th, .service-table td, .totals td { border: 1px solid #111827; padding: 7px; vertical-align: top; }
             .service-table th { background: #f1f5f9; font-size: 10px; text-transform: uppercase; }
-            .section { padding: 12px; border-bottom: 1px solid #111827; }
-            .summary-grid { display: grid; grid-template-columns: 1fr 330px; gap: 14px; padding: 12px; border-bottom: 1px solid #111827; }
+            .section { padding: 8px 10px; border-bottom: 1px solid #111827; }
+            .summary-grid { display: grid; grid-template-columns: 1fr 82mm; gap: 10px; padding: 8px 10px; border-bottom: 1px solid #111827; }
             .totals td:first-child { font-weight: 700; }
             .totals .grand td { font-size: 15px; font-weight: 900; background: #f8fafc; }
             .amount-words { margin-top: 10px; border: 1px solid #cbd5e1; padding: 9px; font-size: 12px; min-height: 44px; }
             .bottom-grid { display: grid; grid-template-columns: 1fr 260px; gap: 0; margin-top: auto; border-top: 1px solid #111827; }
-            .bank, .sign { padding: 12px; min-height: 108px; }
+            .bank, .sign { padding: 9px 10px; min-height: 86px; }
             .sign { border-left: 1px solid #111827; text-align: center; display: flex; flex-direction: column; justify-content: space-between; }
             .annexure-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; margin-bottom: 10px; }
-            table.invoice-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 9px; }
-            .invoice-table th, .invoice-table td { border: 1px solid #94a3b8; padding: 4px; vertical-align: top; overflow-wrap: anywhere; }
+            table.invoice-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: ${invoiceTrips.length > 20 ? '6px' : invoiceTrips.length > 14 ? '7px' : '8px'}; }
+            .invoice-table th, .invoice-table td { border: 1px solid #94a3b8; padding: ${invoiceTrips.length > 20 ? '2px' : '3px'}; vertical-align: top; overflow-wrap: anywhere; }
             .invoice-table th { background: #e2e8f0; color: #0f172a; font-size: 8px; text-transform: uppercase; }
             .muted { color: #475569; font-size: 11px; }
             .center { text-align: center; }
@@ -721,6 +722,20 @@ export default function Billing() {
     printWindow.document.close();
   };
 
+  const handleDownloadPDF = async (invoice) => {
+    if (isManualInvoiceFormat(invoice.invoiceFormat)) return alert('Use Print / Save PDF for this custom invoice format.');
+    if (!(invoice.trips || []).length) return alert('No invoice trips to download.');
+    try {
+      let profile = {};
+      const response = await fetch('/api/my-company');
+      if (response.ok) profile = await response.json();
+      downloadStandardInvoicePdf({ invoice, profile, amountInWords });
+    } catch (error) {
+      console.error('PDF download failed:', error);
+      alert(error.message || 'Could not download the PDF.');
+    }
+  };
+
   const allDisplayedSelected = displayTrips.length > 0 && displayTrips.every(t => selectedTripIds.includes(t.id));
   const handleSelectAll = (event) => {
     if (event.target.checked) {
@@ -751,7 +766,8 @@ export default function Billing() {
     { header: 'Actions', key: 'actions', render: (inv) => (
       <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
         <button type="button" onClick={() => handleEdit(inv)} style={{ color: '#2563eb', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>Edit</button>
-        <button type="button" onClick={() => handleExportPDF(inv)} style={{ color: '#059669', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>Export PDF</button>
+        <button type="button" onClick={() => handleExportPDF(inv)} style={{ color: '#059669', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>Print / Save PDF</button>
+        {!isManualInvoiceFormat(inv.invoiceFormat) && <button type="button" onClick={() => handleDownloadPDF(inv)} style={{ color: '#7c3aed', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>Download PDF</button>}
         <button type="button" onClick={() => handleDelete(inv.id)} style={{ color: 'red', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>Delete</button>
       </div>
     )}
