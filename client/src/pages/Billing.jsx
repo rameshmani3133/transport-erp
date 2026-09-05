@@ -472,7 +472,9 @@ export default function Billing() {
       const supplierAddressHtml = multilineAddressHtml(supplierAddress, isIoclInvoice);
       const receiverAddressHtml = multilineAddressHtml(clientAddress, isIoclInvoice);
       const vehicleNumbers = String(invoice.vehicleNo || '').split(',').map(value => value.trim()).filter(Boolean);
-      const vehicleNumberHtml = vehicleNumbers.length ? vehicleNumbers.map(value => escapeHtml(value)).join('<br>') : '-';
+      const vehicleNumberHtml = vehicleNumbers.length
+        ? vehicleNumbers.map(value => escapeHtml(value)).join(isIoclInvoice ? ', ' : '<br>')
+        : '-';
       printWindow.document.write(`
         <html><head><title>${escapeHtml(invoice.invoiceNo)} - ${formatTitle}</title><style>
           @page { size:A4 portrait; margin:10mm } *{box-sizing:border-box} body{font-family:Arial,sans-serif;color:#111;margin:0;font-size:12px}
