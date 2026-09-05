@@ -649,9 +649,6 @@ export default function Billing() {
                     <tr><td>Other Charges</td><td class="right">${money(invoice.otherCharges)}</td></tr>
                     ${invoice.showRoundOff !== false && invoiceRoundOff(invoice) !== 0 ? `<tr><td>Round Off</td><td class="right">${money(invoiceRoundOff(invoice))}</td></tr>` : ''}
                     <tr class="grand"><td>Grand Total</td><td class="right">${money(invoice.grandTotal)}</td></tr>
-                    <tr><td>Advance Received</td><td class="right">${money(invoice.advanceReceived)}</td></tr>
-                    <tr><td>Total Paid</td><td class="right">${money(invoice.totalPaid)}</td></tr>
-                    <tr class="grand"><td>Balance</td><td class="right">${money(invoice.balanceAmount)}</td></tr>
                   </tbody>
                 </table>
               </div>
@@ -707,8 +704,8 @@ export default function Billing() {
               <tbody>
                 ${tripRows}
                 <tr class="strong">
-                  <td colspan="13" class="right">Balance Amount</td>
-                  <td class="right">${money(invoice.balanceAmount)}</td>
+                  <td colspan="13" class="right">Total Taxable Amount</td>
+                  <td class="right">${money(invoice.subTotal)}</td>
                 </tr>
               </tbody>
             </table>

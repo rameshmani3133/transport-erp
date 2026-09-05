@@ -104,7 +104,7 @@ export function createStandardInvoicePdf({ invoice, profile = {}, amountInWords 
     columns.forEach(([, colWidth], colIndex) => { doc.rect(x, y, colWidth, rowHeight); text(wrapped(values[colIndex], colWidth - 1), x + (colIndex === 0 ? colWidth / 2 : 1), y + 3.5, colIndex === 0 ? { align: 'center' } : {}); x += colWidth; });
     y += rowHeight;
   });
-  doc.setFont('helvetica', 'bold'); doc.setFontSize(7); text(`Balance Amount: ${amount(invoice.balanceAmount)}`, 287, Math.min(y + 7, 198), { align: 'right' });
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(7); text(`Total Taxable Amount: ${amount(invoice.subTotal)}`, 287, Math.min(y + 7, 198), { align: 'right' });
   return doc;
 }
 
