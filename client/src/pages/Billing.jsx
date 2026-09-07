@@ -8,6 +8,13 @@ const roundMoney = (value) => Math.round((num(value) + Number.EPSILON) * 100) / 
 const invoiceRoundOff = (invoice) => roundMoney(num(invoice.grandTotal) - roundMoney(num(invoice.subTotal) + num(invoice.cgst) + num(invoice.sgst) + num(invoice.igst) + num(invoice.otherCharges)));
 const money = (value) => `Rs.${num(value).toFixed(2)}`;
 const formatDate = (value) => value ? new Date(value).toLocaleDateString() : '-';
+const financialYear = (value) => {
+  const invoiceDate = value ? new Date(value) : new Date();
+  const year = Number.isNaN(invoiceDate.getTime()) ? new Date().getFullYear() : invoiceDate.getFullYear();
+  const month = Number.isNaN(invoiceDate.getTime()) ? new Date().getMonth() : invoiceDate.getMonth();
+  const startYear = month >= 3 ? year : year - 1;
+  return `${startYear}-${String(startYear + 1).slice(-2)}`;
+};
 const inputDate = (value) => value ? new Date(value).toISOString().split('T')[0] : '';
 const titleCase = (value) => String(value || '').toLowerCase().replace(/\b\w/g, char => char.toUpperCase());
 const netWeight = (trip) => Math.max(num(trip.billWeight), num(trip.guaranteeWeight));
@@ -475,15 +482,21 @@ export default function Billing() {
       const vehicleNumberHtml = vehicleNumbers.length
         ? vehicleNumbers.map(value => escapeHtml(value)).join(isIoclInvoice ? ', ' : '<br>')
         : '-';
+      const baseDeclaration = invoice.declaration || 'I/we have taken registration under the CGST Act, 2017 and have exercised the option to pay tax on services of GTA in relation to transport of goods supplied by us under forward charge.';
+      const declarationText = isIoclInvoice
+        ? /under forward charge/i.test(baseDeclaration)
+          ? baseDeclaration.replace(/under forward charge/i, `during the financial year ${financialYear(invoice.date)} under forward charge`)
+          : `${baseDeclaration.replace(/[.\s]+$/, '')} during the financial year ${financialYear(invoice.date)} under forward charge.`
+        : baseDeclaration;
       printWindow.document.write(`
         <html><head><title>${escapeHtml(invoice.invoiceNo)} - ${formatTitle}</title><style>
           @page { size:A4 portrait; margin:10mm } *{box-sizing:border-box} body{font-family:Arial,sans-serif;color:#111;margin:0;font-size:12px}
           .head{display:grid;grid-template-columns:minmax(0,1fr) 250px;gap:28px;align-items:start;padding:10px 16px 24px;border-bottom:3px double #222}.head h1{font-size:34px;line-height:1.1;letter-spacing:3px;margin:0;text-transform:uppercase}.addr{line-height:1.5;width:250px;font-size:13px;font-weight:600;overflow-wrap:anywhere}.multiline{white-space:pre-line;overflow-wrap:anywhere}.receiver-address{margin:3px 0 6px;padding-left:0;line-height:1.6}
           .box{border:1px solid #222;margin-top:34px}.title{text-align:center;font-size:23px;font-weight:800;padding:10px;border-bottom:1px solid #222}.grid{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid #222}.cell{padding:11px;font-size:13px;line-height:1.85}.cell+ .cell{border-left:1px solid #222}.supplier-state{display:grid;grid-template-columns:120px 1fr;gap:12px}.receiver-state{display:grid;grid-template-columns:1fr 110px 1.25fr;gap:10px;margin-top:6px;padding-top:6px;border-top:1px solid #aaa}
           .receiver{padding:10px;font-size:13px;border-bottom:1px solid #222;line-height:1.7}.receiver h3{font-size:15px;margin:0 0 8px}.items{width:100%;border-collapse:collapse}.items th,.items td{border:1px solid #444;padding:9px}.items th{background:#e5e7eb}.right{text-align:right}.center{text-align:center}.strong{font-weight:800;font-size:15px}
-          .words,.declaration{padding:10px;border-top:1px solid #222}.declaration{min-height:150px}.sign{text-align:right;margin-top:35px;font-weight:700}
+          .words,.declaration{padding:10px;border-top:1px solid #222}.declaration{min-height:210px}.sign{text-align:right;margin-top:35px;font-weight:700;line-height:1.6}.signature-space{height:20mm}.sign-company{font-size:17px}.sign-role{font-size:16px}
         </style></head><body>
-          <div class="head"><h1>${escapeHtml(supplierName)}</h1><div class="addr">${supplierAddressHtml}${isIoclInvoice ? '' : `<br>GSTIN: ${escapeHtml(profile.gstNumber || '-')}`}</div></div>
+          <div class="head"><h1>${escapeHtml(supplierName)}</h1><div class="addr">${supplierAddressHtml}${profile.phoneNumber ? `<br>Phone: ${escapeHtml(profile.phoneNumber)}` : ''}${isIoclInvoice ? '' : `<br>GSTIN: ${escapeHtml(profile.gstNumber || '-')}`}</div></div>
           <div class="box"><div class="title">TAX INVOICE</div>
             <div class="grid"><div class="cell"><strong>Invoice No:</strong> ${escapeHtml(invoice.invoiceNo)}<br><strong>Invoice Date:</strong> ${escapeHtml(formatDate(invoice.date))}<br><strong>GST:</strong> ${escapeHtml(profile.gstNumber || '-')}<br>${isIoclInvoice ? `<div class="supplier-state"><span><strong>State Code:</strong> ${escapeHtml(supplierState.stateCode)}</span><span><strong>State:</strong> ${escapeHtml(supplierState.stateName)}</span></div>` : `<strong>State Code:</strong> ${escapeHtml(supplierState.stateCode)}`}</div>
             <div class="cell"><strong>Transportation Mode:</strong> ${escapeHtml(invoice.transportationMode || 'By Road')}<br><strong>Vehicle No:</strong><div style="padding-left:12px">${vehicleNumberHtml}</div><strong>Vendor Code:</strong> ${escapeHtml(invoice.vendorCode || invoice.location?.company?.vendorCode || '-')}<br><strong>Period:</strong> ${escapeHtml(formatDate(invoice.periodFrom))} to ${escapeHtml(formatDate(invoice.periodTo))}</div></div>
@@ -500,7 +513,7 @@ export default function Billing() {
               <tr class="strong"><td colspan="3" class="right">Total</td><td class="right">${num(invoice.grandTotal).toFixed(2)}</td></tr>
             </tbody></table>
             <div class="words"><strong>Rupees:</strong> ${escapeHtml(amountInWords(invoice.grandTotal))}</div>
-            <div class="declaration"><strong>Declaration</strong><p>${escapeHtml(invoice.declaration || '-')}</p><div class="sign">For ${escapeHtml(supplierName)}<br><br><br>${escapeHtml(profile.signatoryRole || 'Authorized Signatory')}</div></div>
+            <div class="declaration"><strong>Declaration</strong><p>${escapeHtml(declarationText)}</p><div class="sign"><span class="sign-company">For ${escapeHtml(supplierName)}</span><div class="signature-space"></div><span class="sign-role">${escapeHtml(profile.signatoryRole || 'Authorized Signatory')}</span></div></div>
           </div><script>window.onload=()=>{window.print();window.close()}</script>
         </body></html>`);
       printWindow.document.close();
