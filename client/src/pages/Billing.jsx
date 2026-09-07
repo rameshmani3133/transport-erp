@@ -8,6 +8,14 @@ const roundMoney = (value) => Math.round((num(value) + Number.EPSILON) * 100) / 
 const invoiceRoundOff = (invoice) => roundMoney(num(invoice.grandTotal) - roundMoney(num(invoice.subTotal) + num(invoice.cgst) + num(invoice.sgst) + num(invoice.igst) + num(invoice.otherCharges)));
 const money = (value) => `Rs.${num(value).toFixed(2)}`;
 const formatDate = (value) => value ? new Date(value).toLocaleDateString() : '-';
+const formatDateDMY = (value) => {
+  if (!value) return '-';
+  const isoDate = String(value).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoDate) return `${isoDate[3]}/${isoDate[2]}/${isoDate[1]}`;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '-';
+  return `${String(parsed.getDate()).padStart(2, '0')}/${String(parsed.getMonth() + 1).padStart(2, '0')}/${parsed.getFullYear()}`;
+};
 const financialYear = (value) => {
   const invoiceDate = value ? new Date(value) : new Date();
   const year = Number.isNaN(invoiceDate.getTime()) ? new Date().getFullYear() : invoiceDate.getFullYear();
@@ -491,6 +499,9 @@ export default function Billing() {
           : `${baseDeclaration.replace(/[.\s]+$/, '')} during the financial year ${financialYear(invoice.date)} under forward charge.`
         : baseDeclaration;
       const showCompanyHeader = !isIoclInvoice || invoice.showHeader !== false;
+      const invoiceDateText = isIoclInvoice ? formatDateDMY(invoice.date) : formatDate(invoice.date);
+      const periodFromText = isIoclInvoice ? formatDateDMY(invoice.periodFrom) : formatDate(invoice.periodFrom);
+      const periodToText = isIoclInvoice ? formatDateDMY(invoice.periodTo) : formatDate(invoice.periodTo);
       printWindow.document.write(`
         <html><head><title>${escapeHtml(invoice.invoiceNo)} - ${formatTitle}</title><style>
           @page { size:A4 portrait; margin:5mm 8mm } *{box-sizing:border-box} html,body{height:auto} body{font-family:Arial,sans-serif;color:#111;margin:0;font-size:12px}
@@ -501,8 +512,8 @@ export default function Billing() {
         </style></head><body>
           ${showCompanyHeader ? `<div class="head"><h1>${escapeHtml(supplierName)}</h1><div class="addr">${supplierAddressHtml}${profile.phoneNumber ? `<br>Phone: ${escapeHtml(profile.phoneNumber)}` : ''}${isIoclInvoice ? '' : `<br>GSTIN: ${escapeHtml(profile.gstNumber || '-')}`}</div></div>` : '<div class="letterhead-space"></div>'}
           <div class="box ${showCompanyHeader ? 'with-header' : 'for-letterhead'}"><div class="title">TAX INVOICE</div>
-            <div class="grid"><div class="cell"><strong>Invoice No:</strong> ${escapeHtml(invoice.invoiceNo)}<br><strong>Invoice Date:</strong> ${escapeHtml(formatDate(invoice.date))}<br><strong>GST:</strong> ${escapeHtml(profile.gstNumber || '-')}<br>${isIoclInvoice ? `<div class="supplier-state"><span><strong>State Code:</strong> ${escapeHtml(supplierState.stateCode)}</span><span><strong>State:</strong> ${escapeHtml(supplierState.stateName)}</span></div>` : `<strong>State Code:</strong> ${escapeHtml(supplierState.stateCode)}`}</div>
-            <div class="cell"><strong>Transportation Mode:</strong> ${escapeHtml(invoice.transportationMode || 'By Road')}<br><strong>Vehicle No:</strong> <span>${vehicleNumberHtml}</span><br><strong>Vendor Code:</strong> ${escapeHtml(invoice.vendorCode || invoice.location?.company?.vendorCode || '-')}<br><strong>Period:</strong> ${escapeHtml(formatDate(invoice.periodFrom))} to ${escapeHtml(formatDate(invoice.periodTo))}</div></div>
+            <div class="grid"><div class="cell"><strong>Invoice No:</strong> ${escapeHtml(invoice.invoiceNo)}<br><strong>Invoice Date:</strong> ${escapeHtml(invoiceDateText)}<br><strong>GST:</strong> ${escapeHtml(profile.gstNumber || '-')}<br>${isIoclInvoice ? `<div class="supplier-state"><span><strong>State Code:</strong> ${escapeHtml(supplierState.stateCode)}</span><span><strong>State:</strong> ${escapeHtml(supplierState.stateName)}</span></div>` : `<strong>State Code:</strong> ${escapeHtml(supplierState.stateCode)}`}</div>
+            <div class="cell"><strong>Transportation Mode:</strong> ${escapeHtml(invoice.transportationMode || 'By Road')}<br><strong>Vehicle No:</strong> <span>${vehicleNumberHtml}</span><br><strong>Vendor Code:</strong> ${escapeHtml(invoice.vendorCode || invoice.location?.company?.vendorCode || '-')}<br><strong>Period:</strong> ${escapeHtml(periodFromText)} to ${escapeHtml(periodToText)}</div></div>
             <div class="receiver"><h3>Details of Receiver / Billed to</h3><strong>Name:</strong> ${escapeHtml(clientName)}<br><strong>Address:</strong><div class="receiver-address">${receiverAddressHtml}</div><strong>GSTIN:</strong> ${escapeHtml(invoice.location?.gstNumber || '-')}<div class="receiver-state"><span><strong>State:</strong> ${escapeHtml(receiverState.stateName)}</span><span><strong>State Code:</strong> ${escapeHtml(receiverState.stateCode)}</span><span><strong>State Office Code:</strong> ${escapeHtml(invoice.stateOfficeCode || invoice.location?.stateOfficeCode || '-')}</span></div></div>
             <table class="items"><thead><tr><th style="width:12%">Slr No</th><th>Name of Product / Service</th><th style="width:18%">SAC</th><th style="width:24%">Total Amount (Rs.)</th></tr></thead><tbody>
               <tr><td class="center">1</td><td>${escapeHtml(invoice.productService || 'Transport Charges')}</td><td class="center">${escapeHtml(invoice.sacCode || '-')}</td><td class="right">${num(invoice.subTotal).toFixed(2)}</td></tr>
