@@ -112,6 +112,7 @@ const initialInvoice = {
   declaration: 'I/we have taken registration under the CGST Act, 2017 and have exercised the option to pay tax on services of GTA in relation to transport of goods supplied by us under forward charge.',
   showStatus: false,
   showRoundOff: true,
+  showHeader: true,
   date: today(),
   dueDate: '',
   locationId: '',
@@ -347,6 +348,7 @@ export default function Billing() {
       declaration: invoice.declaration || initialInvoice.declaration,
       showStatus: Boolean(invoice.showStatus),
       showRoundOff: invoice.showRoundOff !== false,
+      showHeader: invoice.showHeader !== false,
       date: inputDate(invoice.date),
       dueDate: inputDate(invoice.dueDate),
       locationId: invoice.locationId ? String(invoice.locationId) : '',
@@ -488,16 +490,17 @@ export default function Billing() {
           ? baseDeclaration.replace(/under forward charge/i, `during the financial year ${financialYear(invoice.date)} under forward charge`)
           : `${baseDeclaration.replace(/[.\s]+$/, '')} during the financial year ${financialYear(invoice.date)} under forward charge.`
         : baseDeclaration;
+      const showCompanyHeader = !isIoclInvoice || invoice.showHeader !== false;
       printWindow.document.write(`
         <html><head><title>${escapeHtml(invoice.invoiceNo)} - ${formatTitle}</title><style>
           @page { size:A4 portrait; margin:5mm 8mm } *{box-sizing:border-box} html,body{height:auto} body{font-family:Arial,sans-serif;color:#111;margin:0;font-size:12px}
           .head{display:grid;grid-template-columns:minmax(0,1fr) 250px;gap:28px;align-items:start;padding:6px 14px 18px;border-bottom:3px double #222}.head h1{font-size:34px;line-height:1.1;letter-spacing:3px;margin:0;text-transform:uppercase}.addr{line-height:1.35;width:250px;font-size:13px;font-weight:600;overflow-wrap:anywhere}.multiline{white-space:pre-line;overflow-wrap:anywhere}.receiver-address{margin:2px 0 4px;padding-left:0;line-height:1.45}
-          .box{border:2px solid #222;margin-top:14mm;break-inside:avoid;page-break-inside:avoid}.title{text-align:center;font-size:23px;font-weight:700;padding:8px;border-bottom:1px solid #222}.grid{display:grid;grid-template-columns:58% 42%;border-bottom:1px solid #222}.cell{padding:9px 10px;font-size:13px;line-height:1.65}.cell+ .cell{border-left:1px solid #222}.supplier-state{display:grid;grid-template-columns:120px 1fr;gap:12px}.receiver-state{display:grid;grid-template-columns:1fr 110px 1.25fr;gap:10px;margin-top:4px;padding-top:4px;border-top:1px solid #aaa}
+          .letterhead-space{height:45mm}.box{border:2px solid #222;break-inside:avoid;page-break-inside:avoid}.box.with-header{margin-top:14mm}.box.for-letterhead{margin-top:0}.title{text-align:center;font-size:23px;font-weight:700;padding:8px;border-bottom:1px solid #222}.grid{display:grid;grid-template-columns:58% 42%;border-bottom:1px solid #222}.cell{padding:9px 10px;font-size:13px;line-height:1.65}.cell+ .cell{border-left:1px solid #222}.supplier-state{display:grid;grid-template-columns:120px 1fr;gap:12px}.receiver-state{display:grid;grid-template-columns:1fr 110px 1.25fr;gap:10px;margin-top:4px;padding-top:4px;border-top:1px solid #aaa}
           .receiver{padding:8px 10px;font-size:13px;border-bottom:1px solid #222;line-height:1.5}.receiver h3{font-size:15px;margin:0 0 6px}.items{width:100%;border-collapse:collapse}.items th,.items td{border:1px solid #444;padding:7px 9px}.items th{background:#e5e7eb}.right{text-align:right}.center{text-align:center}.strong{font-weight:800;font-size:15px}
           .words{padding:8px 10px;border-top:1px solid #222}.declaration-grid{display:grid;grid-template-columns:58% 42%;min-height:52mm;border-top:1px solid #222}.declaration{padding:8px 10px}.declaration p{margin-top:8px;line-height:1.55;text-align:justify}.sign{border-left:1px solid #222;padding:9px 10px;text-align:right;font-weight:700;line-height:1.4}.signature-space{height:15mm}.sign-company{display:block;font-size:17px}.sign-role{display:block;font-size:16px}
         </style></head><body>
-          <div class="head"><h1>${escapeHtml(supplierName)}</h1><div class="addr">${supplierAddressHtml}${profile.phoneNumber ? `<br>Phone: ${escapeHtml(profile.phoneNumber)}` : ''}${isIoclInvoice ? '' : `<br>GSTIN: ${escapeHtml(profile.gstNumber || '-')}`}</div></div>
-          <div class="box"><div class="title">TAX INVOICE</div>
+          ${showCompanyHeader ? `<div class="head"><h1>${escapeHtml(supplierName)}</h1><div class="addr">${supplierAddressHtml}${profile.phoneNumber ? `<br>Phone: ${escapeHtml(profile.phoneNumber)}` : ''}${isIoclInvoice ? '' : `<br>GSTIN: ${escapeHtml(profile.gstNumber || '-')}`}</div></div>` : '<div class="letterhead-space"></div>'}
+          <div class="box ${showCompanyHeader ? 'with-header' : 'for-letterhead'}"><div class="title">TAX INVOICE</div>
             <div class="grid"><div class="cell"><strong>Invoice No:</strong> ${escapeHtml(invoice.invoiceNo)}<br><strong>Invoice Date:</strong> ${escapeHtml(formatDate(invoice.date))}<br><strong>GST:</strong> ${escapeHtml(profile.gstNumber || '-')}<br>${isIoclInvoice ? `<div class="supplier-state"><span><strong>State Code:</strong> ${escapeHtml(supplierState.stateCode)}</span><span><strong>State:</strong> ${escapeHtml(supplierState.stateName)}</span></div>` : `<strong>State Code:</strong> ${escapeHtml(supplierState.stateCode)}`}</div>
             <div class="cell"><strong>Transportation Mode:</strong> ${escapeHtml(invoice.transportationMode || 'By Road')}<br><strong>Vehicle No:</strong> <span>${vehicleNumberHtml}</span><br><strong>Vendor Code:</strong> ${escapeHtml(invoice.vendorCode || invoice.location?.company?.vendorCode || '-')}<br><strong>Period:</strong> ${escapeHtml(formatDate(invoice.periodFrom))} to ${escapeHtml(formatDate(invoice.periodTo))}</div></div>
             <div class="receiver"><h3>Details of Receiver / Billed to</h3><strong>Name:</strong> ${escapeHtml(clientName)}<br><strong>Address:</strong><div class="receiver-address">${receiverAddressHtml}</div><strong>GSTIN:</strong> ${escapeHtml(invoice.location?.gstNumber || '-')}<div class="receiver-state"><span><strong>State:</strong> ${escapeHtml(receiverState.stateName)}</span><span><strong>State Code:</strong> ${escapeHtml(receiverState.stateCode)}</span><span><strong>State Office Code:</strong> ${escapeHtml(invoice.stateOfficeCode || invoice.location?.stateOfficeCode || '-')}</span></div></div>
@@ -969,6 +972,10 @@ export default function Billing() {
             <input id="showRoundOff" type="checkbox" checked={formData.showRoundOff} onChange={e => setFormData({ ...formData, showRoundOff: e.target.checked })} />
             <label htmlFor="showRoundOff" style={{ fontSize: '12px', fontWeight: 700, color: '#475569' }}>Show round off on printed invoice</label>
           </div>
+          {isIocl && <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px', paddingBottom: '8px' }}>
+            <input id="showHeader" type="checkbox" checked={formData.showHeader} onChange={e => setFormData({ ...formData, showHeader: e.target.checked })} />
+            <label htmlFor="showHeader" style={{ fontSize: '12px', fontWeight: 700, color: '#475569' }}>Show company header (uncheck for 5 cm letterhead space)</label>
+          </div>}
           {!isManualTaxInvoice && <div style={{ gridColumn: '1 / -1' }}>
             <Field label="Invoice Description">
               <input type="text" name="description" value={formData.description} onChange={e => setFormData({ ...formData, description: e.target.value })} placeholder="Freight charges as per annexure" style={fieldStyle} />

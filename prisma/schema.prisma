@@ -339,6 +339,7 @@ model Invoice {
   declaration     String?
   showStatus      Boolean           @default(false)
   showRoundOff    Boolean           @default(true)
+  showHeader      Boolean           @default(true)
   date            DateTime          @default(now())
   dueDate         DateTime?
   locationId      Int

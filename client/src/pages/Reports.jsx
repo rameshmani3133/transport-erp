@@ -208,6 +208,29 @@ export default function Reports() {
         return [...new Map(matchesClient.filter(inv => inv.location).map(inv => [inv.location.id, inv.location])).values()];
     }, [data.invoices, gstFilters.clientId]);
 
+    const gstSubtotals = useMemo(() => {
+        const groups = new Map();
+        gstRows.forEach(invoice => {
+            const key = `${invoice.locationId || ''}|${invoice.billingGstin || ''}`;
+            const subtotal = groups.get(key) || {
+                key,
+                clientName: invoice.clientName,
+                billingLocation: invoice.billingLocation,
+                billingGstin: invoice.billingGstin || 'No GSTIN',
+                invoiceCount: 0,
+                subTotal: 0,
+                cgst: 0,
+                sgst: 0,
+                igst: 0,
+                grandTotal: 0
+            };
+            subtotal.invoiceCount += 1;
+            ['subTotal', 'cgst', 'sgst', 'igst', 'grandTotal'].forEach(field => { subtotal[field] += Number(invoice[field] || 0); });
+            groups.set(key, subtotal);
+        });
+        return [...groups.values()].sort((left, right) => `${left.clientName} ${left.billingLocation} ${left.billingGstin}`.localeCompare(`${right.clientName} ${right.billingLocation} ${right.billingGstin}`));
+    }, [gstRows]);
+
     const filteredAccounts = data.accounts.filter(a => filters.group === 'All' || a.accountGroup?.includes(filters.group));
     const filteredLoans = useMemo(() => data.loans.filter(loan => {
         if (filters.startDate && new Date(loan.nextDueDate) < new Date(filters.startDate)) return false;
@@ -352,6 +375,12 @@ export default function Reports() {
         { header: 'Invoice Format', key: 'invoiceFormat' },
         { header: 'Status', key: 'status' }
     ];
+    const gstSubtotalCols = [
+        { header: 'Client', key: 'clientName' }, { header: 'Billing Location', key: 'billingLocation' },
+        { header: 'Billing GSTIN', key: 'billingGstin', excelText: true },
+        { header: 'Invoice Count', key: 'invoiceCount' }, amountColumn('Taxable Amount', 'subTotal'),
+        amountColumn('CGST', 'cgst'), amountColumn('SGST', 'sgst'), amountColumn('IGST', 'igst'), amountColumn('Invoice Total', 'grandTotal')
+    ];
     const accountCols = [
         { header: 'Account', key: 'accountName', render: a => <strong>{a.accountName}</strong>, exportValue: a => a.accountName },
         { header: 'Type', key: 'accountType', exportValue: a => a.accountType },
@@ -441,7 +470,19 @@ export default function Reports() {
             {activeTab === 'summary' && <><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '14px', marginBottom: '18px' }}><StatCard label="Ledger Revenue" value={money(revenue)} tone="#2563eb" sub="Income ledger balance" /><StatCard label="Ledger Expenses" value={money(expenses)} tone="#dc2626" sub="Expense ledger balance" /><StatCard label="Gross Profit" value={money(grossProfit)} tone={grossProfit >= 0 ? '#0f766e' : '#dc2626'} sub={`Margin ${pct(margin)}`} /><StatCard label="Receivables" value={money(receivables)} tone="#b45309" sub="Open client ledger balance" /><StatCard label="Payables" value={money(payables)} tone="#7c3aed" sub="Vendor and pump creditors" /><StatCard label="Loan Outstanding" value={money(loanOutstanding)} tone="#9333ea" sub={`${dueLoans.length} loans not marked paid`} /><StatCard label="Monthly EMI" value={money(loanMonthlyEmi)} tone="#0f766e" sub="Active loan cash outflow" /><StatCard label="Diesel Control" value={money(dieselControl)} tone="#0f766e" sub="Client/vendor diesel subledgers" /><StatCard label="Output Tax" value={money(taxPayable)} tone="#475569" sub="Duties & Taxes" /></div><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: '16px' }}><Section title="Collections Snapshot"><Bar label="Invoiced" value={invoiced} max={Math.max(invoiced, collected, 1)} color="#2563eb" /><Bar label="Collected incl. advances" value={collected} max={Math.max(invoiced, collected, 1)} color="#0f766e" /><Bar label="Unbilled trips" value={unbilled} max={Math.max(invoiced, unbilled, 1)} color="#b45309" /></Section><Section title="Loan Snapshot"><Bar label="Principal" value={loanPrincipal} max={Math.max(loanPrincipal, loanOutstanding, 1)} color="#7c3aed" /><Bar label="Outstanding" value={loanOutstanding} max={Math.max(loanPrincipal, loanOutstanding, 1)} color="#b45309" /><Bar label="Monthly EMI" value={loanMonthlyEmi} max={Math.max(loanPrincipal, loanMonthlyEmi, 1)} color="#0f766e" /></Section><Section title="Receivable Aging">{Object.entries(aging).map(([label, value]) => <Bar key={label} label={label} value={value} max={agingMax} color={label === '90+' ? '#dc2626' : '#0f766e'} />)}</Section><Section title="Top Client Outstanding">{clientRows.slice(0, 5).map(c => <Bar key={c.id} label={c.name} value={c.outstanding} max={Math.max(clientRows[0]?.outstanding || 1, 1)} color="#7c3aed" />)}</Section></div></>}
             {activeTab === 'trips' && <SortableReportTable rows={detailedTripRows} columns={tripCols} title={`Detailed_Trip_${tripReportView}_Report`} tableTitle={`${tripReportView === 'vendor' ? 'Vendor / Market Settlement' : tripReportView === 'client' ? 'Client Trip Statement' : 'Own Vehicle Performance'} (${detailedTripRows.length})`} defaultVisibleKeys={tripDefaultColumns} exportExcel={exportExcel} exportCsv={exportCsv} printReport={printReport} />}
             {activeTab === 'invoices' && <SortableReportTable rows={filteredInvoices} columns={invoiceCols} title="Invoice_Collections_Report" tableTitle="Invoice Collections" exportExcel={exportExcel} exportCsv={exportCsv} printReport={printReport} />}
-            {activeTab === 'gst' && <SortableReportTable rows={gstRows} columns={gstCols} title="GST_Invoice_Report" tableTitle={`GST Invoice Report (${gstRows.length})`} exportExcel={exportExcel} exportCsv={exportCsv} printReport={printReport} />}
+            {activeTab === 'gst' && <>
+                <section style={{ background: 'white', border: '1px solid #cbd5e1', borderRadius: '8px', overflow: 'hidden', marginBottom: '14px' }}>
+                    <div style={{ padding: '10px 14px', background: '#f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}><h3 style={{ margin: 0, color: '#0f172a', fontSize: '14px' }}>Billing Location / GSTIN Subtotals</h3><div style={{ display: 'flex', gap: '7px' }}><button type="button" onClick={() => exportExcel(gstSubtotals, gstSubtotalCols, 'GST_Billing_Location_Subtotals')}>Export Excel</button><button type="button" onClick={() => exportCsv(gstSubtotals, gstSubtotalCols, 'GST_Billing_Location_Subtotals')}>Export CSV</button><button type="button" onClick={() => printReport(gstSubtotals, gstSubtotalCols, 'GST_Billing_Location_Subtotals')}>Print</button></div></div>
+                    <div style={{ overflowX: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                        <thead><tr style={{ background: '#f8fafc' }}>{['Client', 'Billing Location', 'GSTIN', 'Invoices', 'Taxable Amount', 'CGST', 'SGST', 'IGST', 'Invoice Total'].map(label => <th key={label} style={{ padding: '9px', border: '1px solid #e2e8f0', textAlign: label === 'Client' || label === 'Billing Location' || label === 'GSTIN' ? 'left' : 'right' }}>{label}</th>)}</tr></thead>
+                        <tbody>{gstSubtotals.map(subtotal => <tr key={subtotal.key}>
+                            <td style={{ padding: '9px', border: '1px solid #e2e8f0' }}>{subtotal.clientName}</td><td style={{ padding: '9px', border: '1px solid #e2e8f0' }}>{subtotal.billingLocation}</td><td style={{ padding: '9px', border: '1px solid #e2e8f0', whiteSpace: 'nowrap' }}>{subtotal.billingGstin}</td><td style={{ padding: '9px', border: '1px solid #e2e8f0', textAlign: 'right' }}>{subtotal.invoiceCount}</td>
+                            {['subTotal', 'cgst', 'sgst', 'igst', 'grandTotal'].map(field => <td key={field} style={{ padding: '9px', border: '1px solid #e2e8f0', textAlign: 'right', fontWeight: field === 'grandTotal' ? 900 : 700 }}>{money(subtotal[field])}</td>)}
+                        </tr>)}</tbody>
+                    </table></div>
+                </section>
+                <SortableReportTable rows={gstRows} columns={gstCols} title="GST_Invoice_Report" tableTitle={`GST Invoice Report (${gstRows.length})`} exportExcel={exportExcel} exportCsv={exportCsv} printReport={printReport} />
+            </>}
             {activeTab === 'clients' && <SortableReportTable rows={clientRows} columns={clientCols} title="Client_Performance_Report" tableTitle="Client Performance" exportExcel={exportExcel} exportCsv={exportCsv} printReport={printReport} />}
             {activeTab === 'loans' && <SortableReportTable rows={filteredLoans} columns={loanCols} title="Loan_Tracking_Report" tableTitle="Loan Tracking" exportExcel={exportExcel} exportCsv={exportCsv} printReport={printReport} />}
             {activeTab === 'vouchers' && <SortableReportTable rows={filteredVouchers} columns={voucherCols} title="Voucher_Register_Report" tableTitle="Voucher Register" exportExcel={exportExcel} exportCsv={exportCsv} printReport={printReport} />}
