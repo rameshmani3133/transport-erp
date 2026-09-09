@@ -31,6 +31,12 @@ const positive = (value, label) => {
 const optionalAmount = value => Math.max(0, round(toNumber(value)));
 const line = (accountId, type, amount, description) => ({ accountId, type, amount: round(amount), description });
 
+function snapshotInput(value) {
+  const copy = { ...value };
+  delete copy.requestKey;
+  return JSON.parse(JSON.stringify(copy));
+}
+
 function dateParts(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) throw new Error('Due date is invalid.');
@@ -217,7 +223,8 @@ async function createVoucher(tx, req, d, posting, reversalOfId = null) {
     requestKey: text(d.requestKey, null),
     totalAmount: posting.totalAmount, paymentMode: text(d.paymentMode, null), referenceNo: text(d.referenceNo, null),
     narration: text(d.narration) || posting.type.replace(/_/g, ' '), remarks: text(d.remarks, null),
-    sourceType: posting.sourceType, sourceId: posting.sourceId, metadata: posting.metadata || {}, reversalOfId
+    sourceType: posting.sourceType, sourceId: posting.sourceId,
+    metadata: { ...(posting.metadata || {}), inputSnapshot: snapshotInput(d) }, reversalOfId
   }});
   const year = date.getUTCFullYear();
   const voucherNo = `${PREFIXES[posting.type] || 'VCH'}-${year}-${String(voucher.id).padStart(6, '0')}`;
@@ -265,6 +272,48 @@ async function restoreSource(tx, req, original) {
   }
 }
 
+async function assertVoucherCanChange(tx, req, original) {
+  if (!original) throw new Error('Voucher not found.');
+  if (original.status !== 'Posted') throw new Error('Only posted vouchers can be changed.');
+  if (original.voucherType === 'REVERSAL' || original.reversalOfId) throw new Error('A reversal voucher cannot be edited, reversed, or deleted.');
+  if (original.sourceType && original.sourceId) {
+    const newer = await tx.voucher.findFirst({
+      where: withTenant(req, {
+        sourceType: original.sourceType,
+        sourceId: original.sourceId,
+        status: 'Posted',
+        id: { gt: original.id }
+      }),
+      orderBy: { id: 'desc' }
+    });
+    if (newer) throw new Error(`Change the newer linked voucher ${newer.voucherNo} first.`);
+  }
+}
+
+async function reversePostedVoucher(tx, req, original, options = {}) {
+  await assertVoucherCanChange(tx, req, original);
+  const reason = text(options.reason);
+  if (!reason) throw new Error('A reason is required.');
+  const claimed = await tx.voucher.updateMany({
+    where: withTenant(req, { id: original.id, status: 'Posted' }),
+    data: { status: 'Processing' }
+  });
+  if (claimed.count !== 1) throw new Error('This voucher is already being changed. Refresh the voucher register and try again.');
+  const reversalDate = options.date || new Date().toISOString().slice(0, 10);
+  const posting = {
+    type: 'REVERSAL', totalAmount: original.totalAmount, sourceType: null, sourceId: null,
+    metadata: { originalVoucherNo: original.voucherNo, action: options.action || 'Reversed', reason },
+    lines: original.lines.map(item => line(item.accountId, item.type === 'Dr' ? 'Cr' : 'Dr', item.amount, `Reversal of ${original.voucherNo}`))
+  };
+  const reversal = await createVoucher(tx, req, {
+    date: reversalDate,
+    narration: `Reversal of ${original.voucherNo}`,
+    remarks: reason
+  }, posting, original.id);
+  await restoreSource(tx, req, original);
+  return reversal;
+}
+
 router.get('/', async (req, res) => {
   try {
     const vouchers = await prisma.voucher.findMany({ where: withTenant(req), include: { lines: { include: { account: true }, orderBy: { id: 'asc' } }, reversalOf: { select: { voucherNo: true } } }, orderBy: [{ date: 'desc' }, { id: 'desc' }] });
@@ -291,17 +340,63 @@ router.post('/:id/reverse', async (req, res) => {
     const id = toInt(req.params.id);
     const result = await prisma.$transaction(async tx => {
       const original = await tx.voucher.findFirst({ where: withTenant(req, { id }), include: { lines: true } });
-      if (!original) throw new Error('Voucher not found.'); if (original.status !== 'Posted') throw new Error('Only posted vouchers can be reversed.');
-      if (original.sourceType && original.sourceId) {
-        const newer = await tx.voucher.findFirst({ where: withTenant(req, { sourceType: original.sourceType, sourceId: original.sourceId, status: 'Posted', id: { gt: original.id } }), orderBy: { id: 'desc' } });
-        if (newer) throw new Error(`Reverse the newer linked voucher ${newer.voucherNo} first.`);
-      }
-      const posting = { type: 'REVERSAL', totalAmount: original.totalAmount, sourceType: null, sourceId: null, metadata: { originalVoucherNo: original.voucherNo }, lines: original.lines.map(item => line(item.accountId, item.type === 'Dr' ? 'Cr' : 'Dr', item.amount, `Reversal of ${original.voucherNo}`)) };
-      const reversal = await createVoucher(tx, req, { date: req.body.date || new Date().toISOString().slice(0, 10), narration: `Reversal of ${original.voucherNo}`, remarks: text(req.body.reason, 'Voucher reversed') }, posting, original.id);
-      await restoreSource(tx, req, original); await tx.voucher.update({ where: { id: original.id }, data: { status: 'Reversed' } }); return reversal;
+      const reversal = await reversePostedVoucher(tx, req, original, { date: req.body.date, reason: req.body.reason, action: 'Reversed' });
+      await tx.voucher.update({ where: { id: original.id }, data: { status: 'Reversed' } });
+      return reversal;
     });
     res.json(result);
   } catch (error) { console.error('Voucher reversal error:', error); res.status(400).json({ error: error.message || 'Failed to reverse voucher.' }); }
+});
+
+router.put('/:id', async (req, res) => {
+  try {
+    const id = toInt(req.params.id);
+    const result = await prisma.$transaction(async tx => {
+      const original = await tx.voucher.findFirst({ where: withTenant(req, { id }), include: { lines: true } });
+      await assertVoucherCanChange(tx, req, original);
+      const reason = text(req.body.correctionReason);
+      if (!reason) throw new Error('A correction reason is required.');
+
+      const reversal = await reversePostedVoucher(tx, req, original, {
+        date: req.body.date,
+        reason: `Correction: ${reason}`,
+        action: 'Corrected'
+      });
+      const posting = await buildPosting(tx, req, req.body);
+      posting.metadata = { ...(posting.metadata || {}), correctionOfId: original.id, correctionOfVoucherNo: original.voucherNo };
+      const replacement = await createVoucher(tx, req, { ...req.body, requestKey: null }, posting);
+      await applySource(tx, req, replacement, posting, req.body);
+      await tx.voucher.update({
+        where: { id: original.id },
+        data: {
+          status: 'Corrected',
+          metadata: { ...(original.metadata || {}), correctedById: replacement.id, correctedByVoucherNo: replacement.voucherNo, correctionReason: reason }
+        }
+      });
+      return { originalVoucherNo: original.voucherNo, reversalVoucherNo: reversal.voucherNo, voucher: replacement };
+    });
+    res.json(result);
+  } catch (error) { console.error('Voucher correction error:', error); res.status(400).json({ error: error.message || 'Failed to correct voucher.' }); }
+});
+
+router.delete('/:id', async (req, res) => {
+  try {
+    const id = toInt(req.params.id);
+    const result = await prisma.$transaction(async tx => {
+      const original = await tx.voucher.findFirst({ where: withTenant(req, { id }), include: { lines: true } });
+      const reversal = await reversePostedVoucher(tx, req, original, {
+        date: req.body.date,
+        reason: req.body.reason,
+        action: 'Voided'
+      });
+      await tx.voucher.update({
+        where: { id: original.id },
+        data: { status: 'Voided', metadata: { ...(original.metadata || {}), voidReason: text(req.body.reason), voidedAt: new Date().toISOString(), reversalVoucherNo: reversal.voucherNo } }
+      });
+      return { message: `Voucher ${original.voucherNo} was voided through ${reversal.voucherNo}.`, reversal };
+    });
+    res.json(result);
+  } catch (error) { console.error('Voucher void error:', error); res.status(400).json({ error: error.message || 'Failed to void voucher.' }); }
 });
 
 module.exports = router;

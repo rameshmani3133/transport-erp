@@ -15,13 +15,55 @@ const TYPES = [
 const labels = Object.fromEntries(TYPES.flatMap(([, list]) => list));
 const blank = () => ({ requestKey:globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`, type:'CLIENT_RECEIPT', date:today(), partyAccountId:'', cashBankAccountId:'', incomeAccountId:'', expenseAccountId:'', assetAccountId:'', counterAccountId:'', destinationAccountId:'', payableAccountId:'', invoiceId:'', loanId:'', recurringBillId:'', amount:'', taxableAmount:'', principalAmount:'', interestAmount:'', chargesAmount:'', cgst:'', sgst:'', igst:'', tdsAmount:'', paymentMode:'Bank Transfer', referenceNo:'', narration:'', remarks:'', lines:[{accountId:'',type:'Dr',amount:'',description:''},{accountId:'',type:'Cr',amount:'',description:''}] });
 
+function voucherToForm(voucher) {
+  const saved = voucher.metadata?.inputSnapshot;
+  if (saved?.type) return { ...blank(), ...saved, requestKey: globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`, lines: saved.lines || blank().lines };
+
+  const form = { ...blank(), type:voucher.voucherType, date:new Date(voucher.date).toISOString().slice(0,10), paymentMode:voucher.paymentMode||'Bank Transfer', referenceNo:voucher.referenceNo||'', narration:voucher.narration||'', remarks:voucher.remarks||'' };
+  const lines = voucher.lines || [];
+  const find = description => lines.find(item => item.description === description);
+  const accountId = description => String(find(description)?.accountId || '');
+  const amount = description => find(description)?.amount || '';
+  const bankDebit = lines.find(item => item.type==='Dr' && /received|proceeds/i.test(item.description||''));
+  const bankCredit = lines.find(item => item.type==='Cr' && /paid|withdrawn|sent/i.test(item.description||''));
+  form.cashBankAccountId = String(bankDebit?.accountId || bankCredit?.accountId || '');
+  form.invoiceId = voucher.sourceType==='Invoice' ? String(voucher.sourceId||'') : '';
+  form.loanId = voucher.sourceType==='Loan' ? String(voucher.sourceId||'') : '';
+  form.recurringBillId = voucher.sourceType==='RecurringBill' ? String(voucher.sourceId||'') : '';
+
+  const mappings = {
+    CLIENT_RECEIPT:['Client balance settled','Amount received'], CLIENT_REFUND:['Client refund','Refund paid'],
+    VENDOR_PAYMENT:['Creditor balance settled','Amount paid'], PUMP_PAYMENT:['Creditor balance settled','Amount paid'],
+    DRIVER_ADVANCE:['Driver advance','Advance paid'], DRIVER_SALARY_PAYMENT:['Driver payable settled','Salary paid'],
+    BILL_PAYABLE_PAYMENT:['Bill payable settled','Bill paid'], TAX_PAYMENT:['Tax liability settled','Tax paid'],
+    CAPITAL_INTRODUCED:['Owner capital','Capital received'], OWNER_DRAWINGS:['Owner drawings','Amount withdrawn'],
+    VENDOR_REFUND:['Vendor balance adjusted','Vendor refund received']
+  };
+  if (mappings[form.type]) {
+    form.partyAccountId = accountId(mappings[form.type][0]);
+    form.amount = voucher.totalAmount;
+    form.cashBankAccountId = accountId(mappings[form.type][1]) || form.cashBankAccountId;
+  }
+  if (form.type==='OTHER_INCOME_RECEIPT') { form.incomeAccountId=accountId('Income recognized'); form.amount=voucher.totalAmount; }
+  if (form.type==='LOAN_RECEIPT') { form.amount=amount('Loan proceeds received'); form.chargesAmount=amount('Loan charges deducted'); }
+  if (form.type==='LOAN_EMI') { form.principalAmount=amount('Loan principal repaid'); form.interestAmount=amount('Loan interest'); form.chargesAmount=amount('Loan penalty / charges'); }
+  if (['MONTHLY_BILL_PAYMENT','MONTHLY_BILL_ACCRUAL'].includes(form.type)) { form.expenseAccountId=accountId('Monthly expense'); form.taxableAmount=amount('Monthly expense'); form.payableAccountId=accountId('Bill accrued'); }
+  if (form.type==='EXPENSE_PAYMENT') { form.expenseAccountId=accountId('Expense recognized'); form.amount=voucher.totalAmount; }
+  if (form.type==='ASSET_PURCHASE') { form.assetAccountId=accountId('Asset acquired'); form.counterAccountId=accountId('Asset purchase consideration'); form.taxableAmount=amount('Asset acquired'); }
+  if (form.type==='ACCOUNT_TRANSFER') { form.destinationAccountId=accountId('Transfer received'); form.cashBankAccountId=accountId('Transfer sent'); form.amount=voucher.totalAmount; }
+  if (['MONTHLY_BILL_PAYMENT','MONTHLY_BILL_ACCRUAL','ASSET_PURCHASE'].includes(form.type)) { form.cgst=amount('Input CGST'); form.sgst=amount('Input SGST'); form.igst=amount('Input IGST'); }
+  form.tdsAmount=amount('TDS withheld');
+  if (form.type==='GENERAL_JOURNAL') form.lines=lines.map(item=>({accountId:String(item.accountId),type:item.type,amount:item.amount,description:item.description||''}));
+  return form;
+}
+
 function Field({ label, children }) { return <label style={{display:'grid',gap:'6px',fontSize:'12px',fontWeight:700,color:'#475569'}}>{label}{children}</label>; }
 function AccountSelect({ value, change, items, placeholder='Select account', required=true }) { return <select value={value} onChange={e=>change(e.target.value)} required={required} style={style}><option value="">{placeholder}</option>{items.map(a=><option key={a.id} value={a.id}>{a.accountName} ({a.accountGroup})</option>)}</select>; }
 
 export default function PaymentVouchers() {
   const location=useLocation(), navigate=useNavigate();
   const [accounts,setAccounts]=useState([]), [invoices,setInvoices]=useState([]), [loans,setLoans]=useState([]), [bills,setBills]=useState([]), [vouchers,setVouchers]=useState([]);
-  const [form,setForm]=useState(blank()), [saving,setSaving]=useState(false);
+  const [form,setForm]=useState(blank()), [saving,setSaving]=useState(false), [editId,setEditId]=useState(null), [correctionReason,setCorrectionReason]=useState('');
   const set=(key,value)=>setForm(old=>({...old,[key]:value}));
   const load=async()=>{const responses=await Promise.all(['/api/ledger/accounts','/api/invoices','/api/loans','/api/recurring-bills','/api/vouchers'].map(url=>fetch(url)));const setters=[setAccounts,setInvoices,setLoans,setBills,setVouchers];for(let i=0;i<responses.length;i++)if(responses[i].ok)setters[i](await responses[i].json());};
   useEffect(()=>{load().catch(console.error);},[]);
@@ -45,19 +87,23 @@ export default function PaymentVouchers() {
   const chooseBill=id=>{const bill=bills.find(x=>String(x.id)===String(id));setForm(f=>({...f,recurringBillId:id,taxableAmount:bill?.amount||'',expenseAccountId:bill?.expenseAccountId||'',payableAccountId:bill?.payableAccountId||'',narration:bill?`${type==='MONTHLY_BILL_ACCRUAL'?'Accrual':'Payment'} - ${bill.billName}`:''}));};
   useEffect(()=>{const state=location.state;if(!state?.voucherType)return;const base={...blank(),type:state.voucherType};if(state.voucherType==='LOAN_EMI'&&loans.length){const loan=loans.find(x=>String(x.id)===String(state.loanId));setForm({...base,loanId:String(state.loanId),principalAmount:loan?Math.min(+loan.emiAmount||0,+loan.outstandingAmount||0):'',narration:loan?`EMI payment - ${loan.loanNo||loan.lenderName}`:''});navigate('/payments',{replace:true,state:null});}if(state.voucherType==='MONTHLY_BILL_PAYMENT'&&bills.length){const bill=bills.find(x=>String(x.id)===String(state.recurringBillId));setForm({...base,recurringBillId:String(state.recurringBillId),taxableAmount:bill?.amount||'',expenseAccountId:bill?.expenseAccountId||'',narration:bill?`Payment - ${bill.billName}`:''});navigate('/payments',{replace:true,state:null});}},[location.state,loans,bills,navigate]);
   const updateLine=(i,key,value)=>setForm(f=>({...f,lines:f.lines.map((l,n)=>n===i?{...l,[key]:value}:l)}));
-  const submit=async e=>{e.preventDefault();setSaving(true);try{const r=await fetch('/api/vouchers',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(form)}),data=await r.json().catch(()=>({}));if(!r.ok)return alert(data.error||'Failed to post voucher.');alert(`Voucher posted: ${data.voucherNo}`);setForm(blank());await load();}finally{setSaving(false);}};
+  const resetForm=()=>{setForm(blank());setEditId(null);setCorrectionReason('');};
+  const submit=async e=>{e.preventDefault();if(editId&&!correctionReason.trim())return alert('Enter a correction reason.');setSaving(true);try{const r=await fetch(editId?`/api/vouchers/${editId}`:'/api/vouchers',{method:editId?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...form,correctionReason})}),data=await r.json().catch(()=>({}));if(!r.ok)return alert(data.error||`Failed to ${editId?'correct':'post'} voucher.`);alert(editId?`Voucher corrected. New voucher: ${data.voucher?.voucherNo}`:`Voucher posted: ${data.voucherNo}`);resetForm();await load();}finally{setSaving(false);}};
   const reverse=async v=>{const reason=prompt(`Reason for reversing ${v.voucherNo}`);if(!reason)return;const r=await fetch(`/api/vouchers/${v.id}/reverse`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({date:today(),reason})}),data=await r.json().catch(()=>({}));if(!r.ok)return alert(data.error||'Reversal failed.');load();};
+  const edit=v=>{setForm(voucherToForm(v));setEditId(v.id);setCorrectionReason('');window.scrollTo({top:0,behavior:'smooth'});};
+  const voidVoucher=async v=>{const reason=prompt(`Reason for deleting/voiding ${v.voucherNo}`);if(!reason)return;const r=await fetch(`/api/vouchers/${v.id}`,{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({date:today(),reason})}),data=await r.json().catch(()=>({}));if(!r.ok)return alert(data.error||'Failed to void voucher.');alert(data.message);if(editId===v.id)resetForm();load();};
 
   const columns=[
     {header:'Voucher',key:'voucherNo',render:v=><strong>{v.voucherNo}</strong>},{header:'Date',key:'date',render:v=>dateText(v.date),exportValue:v=>dateText(v.date)},
     {header:'Type',key:'voucherType',render:v=>labels[v.voucherType]||v.voucherType},{header:'Debit',key:'debit',filterValue:v=>v.lines?.filter(l=>l.type==='Dr').map(l=>l.account?.accountName).join(', '),render:v=>v.lines?.filter(l=>l.type==='Dr').map(l=>l.account?.accountName).join(', ')},
     {header:'Credit',key:'credit',filterValue:v=>v.lines?.filter(l=>l.type==='Cr').map(l=>l.account?.accountName).join(', '),render:v=>v.lines?.filter(l=>l.type==='Cr').map(l=>l.account?.accountName).join(', ')},{header:'Amount',key:'totalAmount',render:v=><strong>{money(v.totalAmount)}</strong>},
     {header:'Reference',key:'referenceNo',render:v=>v.referenceNo||'-'},{header:'Remarks',key:'remarks',render:v=>v.remarks||'-'},{header:'Status',key:'status',render:v=><strong>{v.status}</strong>},
-    {header:'Actions',key:'actions',render:v=>v.status==='Posted'&&v.voucherType!=='REVERSAL'?<button onClick={()=>reverse(v)} style={{color:'#dc2626',border:0,background:'none',fontWeight:800,cursor:'pointer'}}>Reverse</button>:<span>{v.reversalOf?.voucherNo?`For ${v.reversalOf.voucherNo}`:'-'}</span>}
+    {header:'Actions',key:'actions',render:v=>v.status==='Posted'&&v.voucherType!=='REVERSAL'?<span style={{display:'flex',gap:'10px',flexWrap:'wrap'}}><button onClick={()=>edit(v)} style={{color:'#2563eb',border:0,background:'none',fontWeight:800,cursor:'pointer'}}>Edit</button><button onClick={()=>reverse(v)} style={{color:'#b45309',border:0,background:'none',fontWeight:800,cursor:'pointer'}}>Reverse</button><button onClick={()=>voidVoucher(v)} style={{color:'#dc2626',border:0,background:'none',fontWeight:800,cursor:'pointer'}}>Delete / Void</button></span>:<span>{v.reversalOf?.voucherNo?`For ${v.reversalOf.voucherNo}`:'-'}</span>}
   ];
 
   return <div style={{padding:'20px',maxWidth:'1500px',margin:'0 auto'}}><h2 style={{marginBottom:'4px'}}>Voucher Center</h2><p style={{color:'#64748b',marginTop:0}}>Controlled, server-validated double-entry posting.</p>
-    <form onSubmit={submit} style={{background:'white',padding:'20px',border:'1px solid #e2e8f0',borderRadius:'10px',marginBottom:'26px'}}>
+    <form onSubmit={submit} style={{background:'white',padding:'20px',border:`1px solid ${editId?'#2563eb':'#e2e8f0'}`,borderRadius:'10px',marginBottom:'26px'}}>
+      {editId&&<div style={{background:'#eff6ff',border:'1px solid #bfdbfe',padding:'12px',borderRadius:'7px',marginBottom:'14px',color:'#1e3a8a',fontWeight:700}}>Correcting a posted voucher. Saving will create a reversal and a new corrected voucher; the original audit history will remain.</div>}
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'end',gap:'12px',flexWrap:'wrap',marginBottom:'16px'}}><Field label="Voucher Type"><select value={type} onChange={e=>changeType(e.target.value)} style={{...style,minWidth:'290px'}}>{TYPES.map(([name,list])=><optgroup key={name} label={name}>{list.map(([v,l])=><option key={v} value={v}>{l}</option>)}</optgroup>)}</select></Field><strong style={{fontSize:'22px',color:'#0f766e'}}>{money(total)}</strong></div>
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(210px,1fr))',gap:'14px'}}>
         <Field label="Date"><input type="date" value={form.date} onChange={e=>set('date',e.target.value)} required style={style}/></Field>
@@ -80,7 +126,7 @@ export default function PaymentVouchers() {
         <Field label="Reference / UTR"><input value={form.referenceNo} onChange={e=>set('referenceNo',e.target.value)} style={style}/></Field>
       </div>
       {type==='GENERAL_JOURNAL'&&<div style={{display:'grid',gap:'8px',marginTop:'16px'}}>{form.lines.map((l,i)=><div key={i} style={{display:'grid',gridTemplateColumns:'2fr .6fr 1fr 2fr auto',gap:'8px'}}><AccountSelect value={l.accountId} change={v=>updateLine(i,'accountId',v)} items={accounts}/><select value={l.type} onChange={e=>updateLine(i,'type',e.target.value)} style={style}><option>Dr</option><option>Cr</option></select><input type="number" min="0.01" step="0.01" value={l.amount} onChange={e=>updateLine(i,'amount',e.target.value)} required style={style}/><input value={l.description} onChange={e=>updateLine(i,'description',e.target.value)} placeholder="Description" style={style}/><button type="button" disabled={form.lines.length<=2} onClick={()=>set('lines',form.lines.filter((_,n)=>n!==i))}>x</button></div>)}<button type="button" onClick={()=>set('lines',[...form.lines,{accountId:'',type:'Dr',amount:'',description:''}])} style={{justifySelf:'start'}}>+ Add line</button></div>}
-      <div style={{display:'grid',gap:'12px',marginTop:'16px'}}><Field label="Narration"><input value={form.narration} onChange={e=>set('narration',e.target.value)} required style={style}/></Field><Field label="Remarks"><textarea value={form.remarks} onChange={e=>set('remarks',e.target.value)} rows={2} style={style}/></Field></div>
-      <div style={{display:'flex',justifyContent:'flex-end',gap:'10px',marginTop:'16px'}}><button type="button" onClick={()=>setForm(blank())}>Clear</button><button disabled={saving} type="submit" style={{padding:'10px 18px',border:0,borderRadius:'6px',background:'#0f766e',color:'white',fontWeight:800}}>{saving?'Posting...':'Post Balanced Voucher'}</button></div>
+      <div style={{display:'grid',gap:'12px',marginTop:'16px'}}><Field label="Narration"><input value={form.narration} onChange={e=>set('narration',e.target.value)} required style={style}/></Field><Field label="Remarks"><textarea value={form.remarks} onChange={e=>set('remarks',e.target.value)} rows={2} style={style}/></Field>{editId&&<Field label="Correction Reason"><textarea value={correctionReason} onChange={e=>setCorrectionReason(e.target.value)} required rows={2} style={style}/></Field>}</div>
+      <div style={{display:'flex',justifyContent:'flex-end',gap:'10px',marginTop:'16px'}}><button type="button" onClick={resetForm}>{editId?'Cancel Edit':'Clear'}</button><button disabled={saving} type="submit" style={{padding:'10px 18px',border:0,borderRadius:'6px',background:'#0f766e',color:'white',fontWeight:800}}>{saving?(editId?'Correcting...':'Posting...'):(editId?'Save Corrected Voucher':'Post Balanced Voucher')}</button></div>
     </form><DataTable data={vouchers} columns={columns} title="Voucher Register" enableColumnFilters/></div>;
 }
