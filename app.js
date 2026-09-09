@@ -8,6 +8,7 @@ const { auditMiddleware } = require('./lib/audit');
 const { scheduleDailyBackup } = require('./lib/backup');
 const { scheduleDailyReminderEmails } = require('./lib/reminderService');
 const { ensureDatabaseSchema } = require('./lib/schemaSync');
+const { purgeAuthorizedVoucherPair } = require('./lib/oneTimeMaintenance');
 require('dotenv').config();
 
 const app = express();
@@ -87,6 +88,7 @@ app.get('*', (req, res) => {
 // Start Server
 async function start() {
     await ensureDatabaseSchema(prisma);
+    await purgeAuthorizedVoucherPair(prisma);
     await ensureSuperAdmin();
     scheduleDailyBackup(prisma);
     scheduleDailyReminderEmails(prisma);
