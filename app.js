@@ -1,7 +1,7 @@
 ﻿const express = require('express');
 const cors = require('cors');
 const path = require('path'); // <-- ADDED: Required for serving frontend files
-const { PrismaClient } = require('@prisma/client');
+const prisma = require('./lib/prisma');
 const { authMiddleware, tenantMiddleware } = require('./routes/tenant');
 const { router: authRouter, ensureSuperAdmin } = require('./routes/auth');
 const { auditMiddleware } = require('./lib/audit');
@@ -11,7 +11,6 @@ const { ensureDatabaseSchema } = require('./lib/schemaSync');
 require('dotenv').config();
 
 const app = express();
-const prisma = new PrismaClient();
 const PORT = process.env.PORT || 3000;
 
 // Middleware

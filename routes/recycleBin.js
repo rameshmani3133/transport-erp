@@ -1,10 +1,9 @@
 const express = require('express');
-const { PrismaClient } = require('@prisma/client');
+const prisma = require('../lib/prisma');
 const { isSuperAdmin } = require('../lib/security');
 const { toRequiredInt } = require('../lib/coerce');
 
 const router = express.Router();
-const prisma = new PrismaClient();
 
 const resources = {
   accounts: {

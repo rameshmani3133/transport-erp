@@ -1,11 +1,10 @@
 const express = require('express');
-const { PrismaClient } = require('@prisma/client');
+const prisma = require('../lib/prisma');
 const { withTenant } = require('./tenant');
 const { ensureStandardAccountingAccounts, ensureClientDieselAccount } = require('../lib/accountingAccounts');
 const { toNumber, toInt, toRequiredInt, toDate, text } = require('../lib/coerce');
 const { calculateIoclTotals, roundMoney, resolveGstType } = require('../lib/invoiceMath');
 const router = express.Router();
-const prisma = new PrismaClient();
 
 function incrementInvoiceNo(invoiceNo) {
     const value = String(invoiceNo || '').trim();

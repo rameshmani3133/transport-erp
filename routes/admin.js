@@ -1,5 +1,5 @@
 ﻿const express = require('express');
-const { PrismaClient } = require('@prisma/client');
+const prisma = require('../lib/prisma');
 const { hashPassword, sanitizeUser, requireSuperAdmin } = require('../lib/security');
 const { normalizeTenantKey } = require('./tenant');
 const { runBackup } = require('../lib/backup');
@@ -8,7 +8,6 @@ const fs = require('fs');
 const path = require('path');
 
 const router = express.Router();
-const prisma = new PrismaClient();
 
 router.use(requireSuperAdmin);
 

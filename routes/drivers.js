@@ -1,10 +1,9 @@
 ﻿const express = require('express');
-const { PrismaClient } = require('@prisma/client');
+const prisma = require('../lib/prisma');
 const { withTenant } = require('./tenant');
 const { ensureDriverAdvanceAccount } = require('../lib/accountingAccounts');
 const { toRequiredInt, toDate, toRequiredDate, text } = require('../lib/coerce');
 const router = express.Router();
-const prisma = new PrismaClient();
 
 // GET ALL DRIVERS
 router.get('/', async (req, res) => {

@@ -1,9 +1,8 @@
 ﻿const express = require('express');
-const { PrismaClient } = require('@prisma/client');
+const prisma = require('../lib/prisma');
 const { withTenant } = require('./tenant');
 const { toNumber, toInt, toDate, text } = require('../lib/coerce');
 const router = express.Router();
-const prisma = new PrismaClient();
 
 function voucherLabel(type) {
     return {

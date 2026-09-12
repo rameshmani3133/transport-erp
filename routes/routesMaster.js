@@ -1,9 +1,8 @@
 const express = require('express');
-const { PrismaClient } = require('@prisma/client');
+const prisma = require('../lib/prisma');
 const { withTenant } = require('./tenant');
 const { toNumber, toRequiredInt, text } = require('../lib/coerce');
 const router = express.Router();
-const prisma = new PrismaClient();
 
 router.get('/', async (req, res) => {
     try {

@@ -1,8 +1,7 @@
 const express = require('express');
-const { PrismaClient } = require('@prisma/client');
+const prisma = require('../lib/prisma');
 const { buildReminderItems, defaultReminderRecipients, parseRecipients, sendReminderEmail } = require('../lib/reminderService');
 const router = express.Router();
-const prisma = new PrismaClient();
 
 router.get('/', async (req, res) => {
     try {

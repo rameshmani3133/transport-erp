@@ -1,10 +1,9 @@
 ﻿const express = require('express');
-const { PrismaClient } = require('@prisma/client');
+const prisma = require('../lib/prisma');
 const { withTenant } = require('./tenant');
 const { ensureMarketVendorAccount } = require('../lib/accountingAccounts');
 const { toNumber, toInt, toRequiredInt, toDate, text } = require('../lib/coerce');
 const router = express.Router();
-const prisma = new PrismaClient();
 
 function vehiclePayload(req, d) {
     const isMarket = d.ownershipType === 'Market';

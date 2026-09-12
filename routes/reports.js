@@ -1,8 +1,7 @@
 ﻿const express = require('express');
-const { PrismaClient } = require('@prisma/client');
+const prisma = require('../lib/prisma');
 const { withTenant } = require('./tenant');
 const router = express.Router();
-const prisma = new PrismaClient();
 
 function balanceFor(account) {
     return (account.openingBalance || 0) + account.entries.reduce((sum, e) => {

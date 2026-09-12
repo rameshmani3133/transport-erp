@@ -1,12 +1,11 @@
 const crypto = require('crypto');
 const express = require('express');
-const { PrismaClient } = require('@prisma/client');
+const prisma = require('../lib/prisma');
 const { withTenant } = require('./tenant');
 const { ensureNamedAccount, ensureStandardAccountingAccounts } = require('../lib/accountingAccounts');
 const { toNumber, toInt, toDate, text } = require('../lib/coerce');
 
 const router = express.Router();
-const prisma = new PrismaClient();
 const TYPES = new Set([
   'CLIENT_RECEIPT', 'OTHER_INCOME_RECEIPT', 'LOAN_RECEIPT', 'CAPITAL_INTRODUCED',
   'VENDOR_PAYMENT', 'PUMP_PAYMENT', 'DRIVER_ADVANCE', 'DRIVER_SALARY_PAYMENT',

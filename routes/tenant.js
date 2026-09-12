@@ -1,7 +1,6 @@
-﻿const { PrismaClient } = require('@prisma/client');
+﻿const prisma = require('../lib/prisma');
 const { parseToken, sanitizeUser, isSuperAdmin } = require('../lib/security');
 
-const prisma = new PrismaClient();
 
 function normalizeTenantKey(value) {
   const key = String(value || 'default').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-');

@@ -1,10 +1,9 @@
 ﻿const express = require('express');
-const { PrismaClient } = require('@prisma/client');
+const prisma = require('../lib/prisma');
 const { withTenant } = require('./tenant');
 const { ensureClientLedgerAccount, ensureClientLedgerAccounts } = require('../lib/accountingAccounts');
 const { toRequiredInt, text } = require('../lib/coerce');
 const router = express.Router();
-const prisma = new PrismaClient();
 
 // GET ALL CLIENT COMPANIES
 router.get('/', async (req, res) => {
