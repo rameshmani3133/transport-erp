@@ -1,5 +1,6 @@
 ﻿import React, { useEffect, useMemo, useState } from 'react';
 import DataTable from '../components/DataTable';
+import { isEffectiveVoucher } from '../utils/voucherVisibility';
 
 const money = (value) => `Rs.${Number(value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const pct = (value) => `${Number(value || 0).toFixed(1)}%`;
@@ -118,6 +119,7 @@ export default function Reports() {
     const [gstFilters, setGstFilters] = useState({ startDate: '', endDate: '', clientId: '', locationId: '', gstin: '', gstType: 'All', gstPercent: 'All', invoiceFormat: 'All', invoiceStatus: 'All', invoiceNo: '' });
     const [filters, setFilters] = useState({ clientId: '', startDate: '', endDate: '', group: 'All', loanPaymentStatus: 'All', loanStatus: 'All', voucherType: 'All', voucherStatus: 'All', vehicleId: '', ownershipType: 'All', partyName: '', tripStatus: 'All', invoiceState: 'All', settlementState: 'All', fromLocation: '', toLocation: '' });
     const [tripFilters, setTripFilters] = useState({ vehicleNo: [], ownershipType: [], partyName: [], fromLocation: [], toLocation: [], tripStatus: [], invoiceState: [], settlementState: [] });
+    const [showVoucherAudit, setShowVoucherAudit] = useState(false);
     const [data, setData] = useState({ trips: [], tripReportRows: [], invoices: [], settlements: [], accounts: [], vehicles: [], clients: [], payments: [], loans: [], vouchers: [], loading: true });
 
     useEffect(() => {
@@ -239,13 +241,17 @@ export default function Reports() {
         if (filters.loanStatus !== 'All' && loan.status !== filters.loanStatus) return false;
         return true;
     }), [data.loans, filters]);
-    const filteredVouchers = useMemo(() => data.vouchers.filter(voucher => {
+    const reportVouchers = useMemo(
+        () => showVoucherAudit ? data.vouchers : data.vouchers.filter(isEffectiveVoucher),
+        [data.vouchers, showVoucherAudit]
+    );
+    const filteredVouchers = useMemo(() => reportVouchers.filter(voucher => {
         if (filters.startDate && new Date(voucher.date) < new Date(filters.startDate)) return false;
         if (filters.endDate && new Date(voucher.date) > new Date(filters.endDate)) return false;
         if (filters.voucherType !== 'All' && voucher.voucherType !== filters.voucherType) return false;
         if (filters.voucherStatus !== 'All' && voucher.status !== filters.voucherStatus) return false;
         return true;
-    }), [data.vouchers, filters]);
+    }), [reportVouchers, filters]);
     const incomeAccounts = data.accounts.filter(a => a.accountType === 'Income');
     const expenseAccounts = data.accounts.filter(a => a.accountType === 'Expense');
     const debtorAccounts = data.accounts.filter(a => a.accountGroup?.includes('Sundry Debtors'));
@@ -451,8 +457,9 @@ export default function Reports() {
                 <select value={filters.loanStatus} onChange={e => setFilters({ ...filters, loanStatus: e.target.value })} style={{ padding: '9px', border: '1px solid #cbd5e1', borderRadius: '6px' }}><option value="All">All loan statuses</option><option value="Active">Active</option><option value="On Hold">On Hold</option><option value="Closed">Closed</option></select>
             </div>}
             {activeTab === 'vouchers' && <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', margin: '-6px 0 14px' }}>
-                <select value={filters.voucherType} onChange={e => setFilters({ ...filters, voucherType: e.target.value })} style={{ padding: '9px', border: '1px solid #cbd5e1', borderRadius: '6px' }}><option value="All">All voucher types</option>{[...new Set(data.vouchers.map(voucher => voucher.voucherType))].sort().map(type => <option key={type} value={type}>{type.replace(/_/g, ' ')}</option>)}</select>
-                <select value={filters.voucherStatus} onChange={e => setFilters({ ...filters, voucherStatus: e.target.value })} style={{ padding: '9px', border: '1px solid #cbd5e1', borderRadius: '6px' }}><option value="All">All voucher statuses</option><option value="Posted">Posted</option><option value="Reversed">Reversed</option></select>
+                <select value={filters.voucherType} onChange={e => setFilters({ ...filters, voucherType: e.target.value })} style={{ padding: '9px', border: '1px solid #cbd5e1', borderRadius: '6px' }}><option value="All">All voucher types</option>{[...new Set(reportVouchers.map(voucher => voucher.voucherType))].sort().map(type => <option key={type} value={type}>{type.replace(/_/g, ' ')}</option>)}</select>
+                <select value={filters.voucherStatus} onChange={e => setFilters({ ...filters, voucherStatus: e.target.value })} style={{ padding: '9px', border: '1px solid #cbd5e1', borderRadius: '6px' }}><option value="All">All voucher statuses</option>{[...new Set(reportVouchers.map(voucher => voucher.status).filter(Boolean))].sort().map(status => <option key={status} value={status}>{status}</option>)}</select>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '13px', fontWeight: 700, color: '#475569' }}><input type="checkbox" checked={showVoucherAudit} onChange={e => setShowVoucherAudit(e.target.checked)} />Show audit history</label>
             </div>}
             {activeTab === 'gst' && <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(175px, 1fr))', gap: '10px', margin: '-6px 0 14px', padding: '12px', background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
                 <input type="date" value={gstFilters.startDate} onChange={e => setGstFilters({ ...gstFilters, startDate: e.target.value })} title="From date" />
@@ -485,7 +492,7 @@ export default function Reports() {
             </>}
             {activeTab === 'clients' && <SortableReportTable rows={clientRows} columns={clientCols} title="Client_Performance_Report" tableTitle="Client Performance" exportExcel={exportExcel} exportCsv={exportCsv} printReport={printReport} />}
             {activeTab === 'loans' && <SortableReportTable rows={filteredLoans} columns={loanCols} title="Loan_Tracking_Report" tableTitle="Loan Tracking" exportExcel={exportExcel} exportCsv={exportCsv} printReport={printReport} />}
-            {activeTab === 'vouchers' && <SortableReportTable rows={filteredVouchers} columns={voucherCols} title="Voucher_Register_Report" tableTitle="Voucher Register" exportExcel={exportExcel} exportCsv={exportCsv} printReport={printReport} />}
+            {activeTab === 'vouchers' && <SortableReportTable rows={filteredVouchers} columns={voucherCols} title={showVoucherAudit?'Voucher_Audit_History_Report':'Effective_Voucher_Register_Report'} tableTitle={showVoucherAudit?'Voucher Audit History':'Effective Voucher Register'} exportExcel={exportExcel} exportCsv={exportCsv} printReport={printReport} />}
             {activeTab === 'accounts' && <><div style={{ display: 'flex', gap: '8px', marginBottom: '12px', flexWrap: 'wrap' }}><select value={filters.group} onChange={e => setFilters({ ...filters, group: e.target.value })}><option value="All">All groups</option><option value="Sundry Debtors">Sundry Debtors</option><option value="Sundry Creditors">Sundry Creditors</option><option value="Cash/Bank">Cash/Bank</option><option value="Direct Income">Income</option><option value="Expense">Expense</option><option value="Duties & Taxes">Duties & Taxes</option><option value="Client Diesel">Client Diesel</option><option value="Vendor Diesel">Vendor Diesel</option></select></div><SortableReportTable rows={filteredAccounts} columns={accountCols} title="Ledger_Audit_Report" tableTitle="Ledger Account Audit" exportExcel={exportExcel} exportCsv={exportCsv} printReport={printReport} /></>}
         </div>
     );

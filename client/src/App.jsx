@@ -226,7 +226,14 @@ export default function App() {
   }
 
   return (
-    <div className="app-shell">
+    <div
+      className="app-shell"
+      onChangeCapture={(event) => {
+        if (event.target.tagName !== 'SELECT') return;
+        const select = event.target;
+        window.requestAnimationFrame(() => select.blur());
+      }}
+    >
       <nav className="sidebar no-print">
         <div className="sidebar-header">Logistics ERP</div>
         <div className="user-panel">

@@ -31,6 +31,25 @@ const readSavedRowsPerPage = (storageKey) => {
     }
 };
 
+const isDateFilterColumn = column => column?.filterType === 'date'
+    || /date$/i.test(String(column?.key || '').split('.').pop());
+
+const normalizedDateValue = value => {
+    if (!value) return '';
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+        return value.toISOString().slice(0, 10);
+    }
+    const textValue = String(value).trim();
+    const isoMatch = textValue.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+    const indianMatch = textValue.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (indianMatch) {
+        return `${indianMatch[3]}-${indianMatch[2].padStart(2, '0')}-${indianMatch[1].padStart(2, '0')}`;
+    }
+    const parsed = new Date(textValue);
+    return Number.isNaN(parsed.getTime()) ? '' : parsed.toISOString().slice(0, 10);
+};
+
 export default function DataTable({ data, columns, title = "Records", enableColumnFilters = false, onFilteredDataChange, recycleBinType, onRecycleChanged, onNavigateRecord, activeRecordId, recordIdKey = 'id' }) {
     const rowsPerPageStorageKey = useMemo(
         () => getRowsPerPageStorageKey(recycleBinType, title),
@@ -90,6 +109,9 @@ export default function DataTable({ data, columns, title = "Records", enableColu
                 filtered = filtered.filter(row => activeFilters.every(([key, value]) => {
                     const col = columns.find(item => item.key === key);
                     if (!col) return true;
+                    if (isDateFilterColumn(col)) {
+                        return normalizedDateValue(getCellValue(row, col)) === value;
+                    }
                     return String(getCellValue(row, col) || '').toLowerCase().includes(String(value).toLowerCase());
                 }));
             }
@@ -275,9 +297,9 @@ export default function DataTable({ data, columns, title = "Records", enableColu
                                     <th key={`filter-${idx}`} style={{ padding: '8px 12px' }}>
                                         {col.key !== 'actions' && (
                                             <input
-                                                type="text"
+                                                type={isDateFilterColumn(col) ? 'date' : 'text'}
                                                 aria-label={`Filter ${col.header}`}
-                                                placeholder={`Filter ${col.header}`}
+                                                placeholder={isDateFilterColumn(col) ? undefined : `Filter ${col.header}`}
                                                 value={columnFilters[col.key] || ''}
                                                 onClick={(event) => event.stopPropagation()}
                                                 onChange={(event) => updateColumnFilter(col.key, event.target.value)}

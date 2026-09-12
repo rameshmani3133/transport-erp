@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import DataTable from '../components/DataTable';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { isEffectiveVoucher } from '../utils/voucherVisibility';
 
 const money = v => `Rs.${Number(v || 0).toFixed(2)}`;
 const today = () => new Date().toISOString().slice(0, 10);
@@ -64,6 +65,7 @@ export default function PaymentVouchers() {
   const location=useLocation(), navigate=useNavigate();
   const [accounts,setAccounts]=useState([]), [invoices,setInvoices]=useState([]), [loans,setLoans]=useState([]), [bills,setBills]=useState([]), [vouchers,setVouchers]=useState([]);
   const [form,setForm]=useState(blank()), [saving,setSaving]=useState(false), [editId,setEditId]=useState(null), [correctionReason,setCorrectionReason]=useState('');
+  const [showAuditHistory,setShowAuditHistory]=useState(false);
   const set=(key,value)=>setForm(old=>({...old,[key]:value}));
   const load=async()=>{const responses=await Promise.all(['/api/ledger/accounts','/api/invoices','/api/loans','/api/recurring-bills','/api/vouchers'].map(url=>fetch(url)));const setters=[setAccounts,setInvoices,setLoans,setBills,setVouchers];for(let i=0;i<responses.length;i++)if(responses[i].ok)setters[i](await responses[i].json());};
   useEffect(()=>{load().catch(console.error);},[]);
@@ -93,9 +95,10 @@ export default function PaymentVouchers() {
   const edit=v=>{setForm(voucherToForm(v));setEditId(v.id);setCorrectionReason('');window.scrollTo({top:0,behavior:'smooth'});};
   const voidVoucher=async v=>{const reason=prompt(`Reason for deleting/voiding ${v.voucherNo}`);if(!reason)return;const r=await fetch(`/api/vouchers/${v.id}`,{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({date:today(),reason})}),data=await r.json().catch(()=>({}));if(!r.ok)return alert(data.error||'Failed to void voucher.');alert(data.message);if(editId===v.id)resetForm();load();};
   const handleVoucherAction=(voucher,action)=>{if(action==='edit')edit(voucher);if(action==='reverse')reverse(voucher);if(action==='void')voidVoucher(voucher);};
+  const visibleVouchers=useMemo(()=>showAuditHistory?vouchers:vouchers.filter(isEffectiveVoucher),[vouchers,showAuditHistory]);
 
   const columns=[
-    {header:'Voucher',key:'voucherNo',render:v=><strong>{v.voucherNo}</strong>},{header:'Date',key:'date',render:v=>dateText(v.date),exportValue:v=>dateText(v.date)},
+    {header:'Voucher',key:'voucherNo',render:v=><strong>{v.voucherNo}</strong>},{header:'Date',key:'date',filterType:'date',render:v=>dateText(v.date),exportValue:v=>dateText(v.date)},
     {header:'Type',key:'voucherType',render:v=>labels[v.voucherType]||v.voucherType},{header:'Debit',key:'debit',filterValue:v=>v.lines?.filter(l=>l.type==='Dr').map(l=>l.account?.accountName).join(', '),render:v=>v.lines?.filter(l=>l.type==='Dr').map(l=>l.account?.accountName).join(', ')},
     {header:'Credit',key:'credit',filterValue:v=>v.lines?.filter(l=>l.type==='Cr').map(l=>l.account?.accountName).join(', '),render:v=>v.lines?.filter(l=>l.type==='Cr').map(l=>l.account?.accountName).join(', ')},{header:'Amount',key:'totalAmount',render:v=><strong>{money(v.totalAmount)}</strong>},
     {header:'Reference',key:'referenceNo',render:v=>v.referenceNo||'-'},{header:'Remarks',key:'remarks',render:v=>v.remarks||'-'},{header:'Status',key:'status',render:v=><strong>{v.status}</strong>},
@@ -129,5 +132,5 @@ export default function PaymentVouchers() {
       {type==='GENERAL_JOURNAL'&&<div style={{display:'grid',gap:'8px',marginTop:'16px'}}>{form.lines.map((l,i)=><div key={i} style={{display:'grid',gridTemplateColumns:'2fr .6fr 1fr 2fr auto',gap:'8px'}}><AccountSelect value={l.accountId} change={v=>updateLine(i,'accountId',v)} items={accounts}/><select value={l.type} onChange={e=>updateLine(i,'type',e.target.value)} style={style}><option>Dr</option><option>Cr</option></select><input type="number" min="0.01" step="0.01" value={l.amount} onChange={e=>updateLine(i,'amount',e.target.value)} required style={style}/><input value={l.description} onChange={e=>updateLine(i,'description',e.target.value)} placeholder="Description" style={style}/><button type="button" disabled={form.lines.length<=2} onClick={()=>set('lines',form.lines.filter((_,n)=>n!==i))}>x</button></div>)}<button type="button" onClick={()=>set('lines',[...form.lines,{accountId:'',type:'Dr',amount:'',description:''}])} style={{justifySelf:'start'}}>+ Add line</button></div>}
       <div style={{display:'grid',gap:'12px',marginTop:'16px'}}><Field label="Narration"><input value={form.narration} onChange={e=>set('narration',e.target.value)} required style={style}/></Field><Field label="Remarks"><textarea value={form.remarks} onChange={e=>set('remarks',e.target.value)} rows={2} style={style}/></Field>{editId&&<Field label="Correction Reason"><textarea value={correctionReason} onChange={e=>setCorrectionReason(e.target.value)} required rows={2} style={style}/></Field>}</div>
       <div style={{display:'flex',justifyContent:'flex-end',gap:'10px',marginTop:'16px'}}><button type="button" onClick={resetForm}>{editId?'Cancel Edit':'Clear'}</button><button disabled={saving} type="submit" style={{padding:'10px 18px',border:0,borderRadius:'6px',background:'#0f766e',color:'white',fontWeight:800}}>{saving?(editId?'Correcting...':'Posting...'):(editId?'Save Corrected Voucher':'Post Balanced Voucher')}</button></div>
-    </form><DataTable data={vouchers} columns={columns} title="Voucher Register" enableColumnFilters/></div>;
+    </form><div style={{display:'flex',justifyContent:'flex-end',margin:'-12px 0 12px'}}><label style={{display:'flex',alignItems:'center',gap:'8px',fontSize:'13px',fontWeight:700,color:'#475569',cursor:'pointer'}}><input type="checkbox" checked={showAuditHistory} onChange={e=>setShowAuditHistory(e.target.checked)}/>Show audit history (corrected, reversed and voided entries)</label></div><DataTable data={visibleVouchers} columns={columns} title={showAuditHistory?'Voucher Audit History':'Effective Voucher Register'} enableColumnFilters/></div>;
 }
