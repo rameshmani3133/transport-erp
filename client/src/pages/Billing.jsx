@@ -578,15 +578,22 @@ export default function Billing() {
             .line { font-size: 12px; line-height: 1.45; margin-top: 3px; }
             .meta-row { display: grid; grid-template-columns: 96px 1fr; gap: 8px; font-size: 12px; line-height: 1.6; }
             .meta-row strong { color: #334155; }
-            .service-table, .totals { width: 100%; border-collapse: collapse; font-size: 12px; }
-            .service-table th, .service-table td, .totals td { border: 1px solid #111827; padding: 7px; vertical-align: top; }
+            .service-table, .totals { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 12px; }
+            .service-table th, .service-table td { border: 0; border-right: 1px solid #111827; border-bottom: 1px solid #111827; padding: 7px; vertical-align: top; }
+            .service-table th:last-child, .service-table td:last-child { border-right: 0; }
+            .service-table tbody tr:last-child td { border-bottom: 0; }
             .service-table th { background: #f1f5f9; font-size: 10px; text-transform: uppercase; }
-            .section { padding: 8px 10px; border-bottom: 1px solid #111827; }
-            .summary-grid { display: grid; grid-template-columns: 1fr 82mm; gap: 10px; padding: 8px 10px; border-bottom: 1px solid #111827; }
+            .section { padding: 0; border-bottom: 1px solid #111827; }
+            .summary-grid { display: grid; grid-template-columns: 1fr 82mm; gap: 0; padding: 0; border-bottom: 1px solid #111827; }
+            .summary-grid > div { padding: 8px 10px; }
+            .totals { border-left: 1px solid #111827; }
+            .totals td { border: 0; border-bottom: 1px solid #111827; padding: 7px; vertical-align: middle; }
+            .totals td + td { border-left: 1px solid #111827; }
+            .totals tr:last-child td { border-bottom: 0; }
             .totals td:first-child { font-weight: 700; }
             .totals .grand td { font-size: 15px; font-weight: 900; background: #f8fafc; }
             .amount-words { margin-top: 10px; border: 1px solid #cbd5e1; padding: 9px; font-size: 12px; min-height: 44px; }
-            .bottom-grid { display: grid; grid-template-columns: 1fr 260px; gap: 0; margin-top: auto; border-top: 1px solid #111827; }
+            .bottom-grid { display: grid; grid-template-columns: 1fr 260px; gap: 0; margin-top: auto; }
             .bank, .sign { padding: 9px 10px; min-height: 86px; }
             .sign { border-left: 1px solid #111827; text-align: center; display: flex; flex-direction: column; justify-content: space-between; }
             .annexure-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; margin-bottom: 10px; }

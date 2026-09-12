@@ -9,7 +9,33 @@ const Icons = {
     Sort: () => <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"></line><polyline points="19 12 12 19 5 12"></polyline></svg>
 };
 
+const ROW_COUNT_OPTIONS = [10, 25, 50, 100, 'all'];
+const ROW_COUNT_STORAGE_PREFIX = 'transport-erp:data-table:rows-per-page:';
+
+const getRowsPerPageStorageKey = (recycleBinType, title) => {
+    const tableKey = String(recycleBinType || title || 'records')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-');
+    return `${ROW_COUNT_STORAGE_PREFIX}${tableKey || 'records'}`;
+};
+
+const readSavedRowsPerPage = (storageKey) => {
+    try {
+        const savedValue = window.localStorage.getItem(storageKey);
+        if (savedValue === 'all') return 'all';
+        const numericValue = Number(savedValue);
+        return ROW_COUNT_OPTIONS.includes(numericValue) ? numericValue : 10;
+    } catch {
+        return 10;
+    }
+};
+
 export default function DataTable({ data, columns, title = "Records", enableColumnFilters = false, onFilteredDataChange, recycleBinType, onRecycleChanged, onNavigateRecord, activeRecordId, recordIdKey = 'id' }) {
+    const rowsPerPageStorageKey = useMemo(
+        () => getRowsPerPageStorageKey(recycleBinType, title),
+        [recycleBinType, title]
+    );
     const [search, setSearch] = useState('');
     const [columnFilters, setColumnFilters] = useState({});
     const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
@@ -18,7 +44,9 @@ export default function DataTable({ data, columns, title = "Records", enableColu
     const [queryId, setQueryId] = useState('');
     const [selectedRecordId, setSelectedRecordId] = useState(activeRecordId ?? null);
     const [queryMessage, setQueryMessage] = useState('');
-    const rowsPerPage = 10;
+    const [rowsPerPage, setRowsPerPage] = useState(
+        () => readSavedRowsPerPage(rowsPerPageStorageKey)
+    );
 
     // Helper to get nested object values (e.g., 'company.companyName')
     const getNestedValue = (obj, path) => path.split('.').reduce((acc, part) => acc && acc[part], obj);
@@ -112,8 +140,11 @@ export default function DataTable({ data, columns, title = "Records", enableColu
     };
 
     // Pagination Logic
-    const totalPages = Math.ceil(processedData.length / rowsPerPage) || 1;
-    const currentData = processedData.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
+    const effectiveRowsPerPage = rowsPerPage === 'all'
+        ? Math.max(processedData.length, 1)
+        : rowsPerPage;
+    const totalPages = Math.ceil(processedData.length / effectiveRowsPerPage) || 1;
+    const currentData = processedData.slice((currentPage - 1) * effectiveRowsPerPage, currentPage * effectiveRowsPerPage);
     const activeId = activeRecordId ?? selectedRecordId;
     const activeIndex = processedData.findIndex(row => String(getNestedValue(row, recordIdKey)) === String(activeId));
 
@@ -121,6 +152,11 @@ export default function DataTable({ data, columns, title = "Records", enableColu
         if (activeRecordId == null) return;
         setSelectedRecordId(activeRecordId);
     }, [activeRecordId]);
+
+    useEffect(() => {
+        setRowsPerPage(readSavedRowsPerPage(rowsPerPageStorageKey));
+        setCurrentPage(1);
+    }, [rowsPerPageStorageKey]);
 
     useEffect(() => {
         if (currentPage > totalPages) setCurrentPage(totalPages);
@@ -133,7 +169,7 @@ export default function DataTable({ data, columns, title = "Records", enableColu
         setSelectedRecordId(recordId);
         setQueryId(String(recordId ?? ''));
         setQueryMessage(`${index + 1} of ${processedData.length} filtered records`);
-        if (index >= 0) setCurrentPage(Math.floor(index / rowsPerPage) + 1);
+        if (index >= 0) setCurrentPage(Math.floor(index / effectiveRowsPerPage) + 1);
         onNavigateRecord?.(row, { index, total: processedData.length, filteredData: processedData });
         if (onNavigateRecord) setTimeout(() => window.scrollTo({ top: 0, behavior: 'smooth' }), 0);
     };
@@ -153,6 +189,19 @@ export default function DataTable({ data, columns, title = "Records", enableColu
             : activeIndex + direction;
         if (nextIndex < 0 || nextIndex >= processedData.length) return;
         navigateToRecord(processedData[nextIndex]);
+    };
+
+    const changeRowsPerPage = (event) => {
+        const selectedValue = event.target.value === 'all'
+            ? 'all'
+            : Number(event.target.value);
+        setRowsPerPage(selectedValue);
+        setCurrentPage(1);
+        try {
+            window.localStorage.setItem(rowsPerPageStorageKey, String(selectedValue));
+        } catch {
+            // Pagination still works when browser storage is unavailable.
+        }
     };
 
     return (
@@ -258,8 +307,25 @@ export default function DataTable({ data, columns, title = "Records", enableColu
             </div>
 
             {/* Pagination controls */}
-            <div style={{ padding: '15px 20px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#f8fafc' }}>
-                <span style={{ fontSize: '13px', color: '#64748b' }}>Page {currentPage} of {totalPages}</span>
+            <div style={{ padding: '15px 20px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#f8fafc', flexWrap: 'wrap', gap: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: '13px', color: '#64748b' }}>Page {currentPage} of {totalPages}</span>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '7px', fontSize: '13px', color: '#475569' }}>
+                        Rows per page
+                        <select
+                            aria-label={`Rows per page for ${title}`}
+                            value={rowsPerPage}
+                            onChange={changeRowsPerPage}
+                            style={{ padding: '6px 8px', border: '1px solid #cbd5e1', borderRadius: '4px', backgroundColor: 'white', color: '#0f172a' }}
+                        >
+                            {ROW_COUNT_OPTIONS.map(option => (
+                                <option key={option} value={option}>
+                                    {option === 'all' ? 'All' : option}
+                                </option>
+                            ))}
+                        </select>
+                    </label>
+                </div>
                 <div style={{ display: 'flex', gap: '10px' }}>
                     <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} style={{ padding: '6px 12px', border: '1px solid #cbd5e1', borderRadius: '4px', backgroundColor: currentPage === 1 ? '#f1f5f9' : 'white', cursor: currentPage === 1 ? 'not-allowed' : 'pointer' }}>Previous</button>
                     <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} style={{ padding: '6px 12px', border: '1px solid #cbd5e1', borderRadius: '4px', backgroundColor: currentPage === totalPages ? '#f1f5f9' : 'white', cursor: currentPage === totalPages ? 'not-allowed' : 'pointer' }}>Next</button>

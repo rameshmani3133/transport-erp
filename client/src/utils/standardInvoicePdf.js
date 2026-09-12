@@ -15,18 +15,15 @@ export function createStandardInvoicePdf({ invoice, profile = {}, amountInWords 
   const location = invoice.location?.locationName || '-';
   const left = 10;
   const width = 190;
+  const right = left + width;
+  const summaryTop = 8;
+  const summaryBottom = 289;
   const text = (value, x, y, options = {}) => doc.text(String(value ?? '-'), x, y, options);
   const wrapped = (value, maxWidth) => doc.splitTextToSize(String(value || '-'), maxWidth);
-  const line = y => doc.line(left, y, left + width, y);
-  const row = (label, value, y, bold = false) => {
-    doc.setFont('helvetica', bold ? 'bold' : 'normal');
-    text(label, 132, y);
-    text(amount(value), 197, y, { align: 'right' });
-  };
+  const line = (y, start = left, end = right) => doc.line(start, y, end, y);
 
   doc.setDrawColor(17, 24, 39);
-  doc.setLineWidth(0.4);
-  doc.rect(left, 8, width, 281);
+  doc.setLineWidth(0.25);
   doc.setFont('helvetica', 'bold'); doc.setFontSize(13); text('TAX INVOICE', 105, 15, { align: 'center' });
   line(18);
   doc.setFontSize(18); text(supplier.toUpperCase(), 105, 26, { align: 'center' });
@@ -50,7 +47,7 @@ export function createStandardInvoicePdf({ invoice, profile = {}, amountInWords 
   });
   line(90);
   const headers = ['S.No', 'Description', 'SAC', 'Vendor', 'PO / MIGO', 'Trips', 'Taxable Value'];
-  const xs = [10, 22, 93, 111, 134, 163, 178, 200];
+  const xs = [left, 22, 93, 111, 134, 163, 178, right];
   doc.setFillColor(241, 245, 249); doc.rect(10, 90, 190, 10, 'F');
   doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5);
   headers.forEach((header, index) => text(header, (xs[index] + xs[index + 1]) / 2, 96, { align: 'center' }));
@@ -61,33 +58,65 @@ export function createStandardInvoicePdf({ invoice, profile = {}, amountInWords 
   text(invoice.sacCode || '-', 102, 107, { align: 'center' }); text(invoice.vendorCode || '-', 122.5, 107, { align: 'center' });
   text(invoice.poMigo || '-', 148.5, 107, { align: 'center' }); text(String(trips.length), 170.5, 107, { align: 'center' });
   text(amount(invoice.subTotal), 197, 107, { align: 'right' });
-  doc.setFontSize(8.5); doc.setFont('helvetica', 'bold'); text('Amount Chargeable', 14, 132);
-  doc.setFont('helvetica', 'normal'); text(wrapped(amountInWords(invoice.grandTotal), 104), 14, 138);
-  doc.rect(128, 124, 72, 75);
-  row('Subtotal', invoice.subTotal, 132);
-  row('CGST', invoice.cgst, 142); row('SGST', invoice.sgst, 152); row('IGST', invoice.igst, 162);
-  row('Other Charges', invoice.otherCharges, 172);
   const calculated = number(invoice.grandTotal) - (number(invoice.subTotal) + number(invoice.cgst) + number(invoice.sgst) + number(invoice.igst) + number(invoice.otherCharges));
-  if (invoice.showRoundOff !== false && Math.abs(calculated) >= 0.005) row('Round Off', calculated, 182);
-  row('Grand Total', invoice.grandTotal, 193, true);
-  line(207); doc.line(125, 207, 125, 288);
-  doc.setFont('helvetica', 'bold'); text('BANK & PAYMENT DETAILS', 14, 216);
+  const totalRows = [
+    ['Subtotal', invoice.subTotal],
+    ['CGST', invoice.cgst],
+    ['SGST', invoice.sgst],
+    ['IGST', invoice.igst],
+    ['Other Charges', invoice.otherCharges],
+    ...(invoice.showRoundOff !== false && Math.abs(calculated) >= 0.005 ? [['Round Off', calculated]] : []),
+    ['Grand Total', invoice.grandTotal, true]
+  ];
+  const summaryStart = 120;
+  const summaryEnd = 200;
+  const totalsLeft = 128;
+  const totalRowHeight = (summaryEnd - summaryStart) / totalRows.length;
+  doc.line(totalsLeft, summaryStart, totalsLeft, summaryEnd);
+  totalRows.forEach(([label, value, bold], index) => {
+    const rowTop = summaryStart + index * totalRowHeight;
+    if (index > 0) line(rowTop, totalsLeft, right);
+    const baseline = rowTop + totalRowHeight / 2 + 1.2;
+    doc.setFont('helvetica', bold ? 'bold' : 'normal');
+    doc.setFontSize(bold ? 9.5 : 8.5);
+    text(label, totalsLeft + 4, baseline);
+    text(amount(value), right - 3, baseline, { align: 'right' });
+  });
+  doc.setFontSize(8.5); doc.setFont('helvetica', 'bold'); text('Amount Chargeable', 14, 131);
   doc.setFont('helvetica', 'normal');
-  text(`Bank: ${profile.bankName || '-'}`, 14, 225); text(`Account No: ${profile.accountNumber || '-'}`, 14, 234); text(`IFSC: ${profile.ifscCode || '-'}`, 14, 243);
-  doc.setFont('helvetica', 'bold'); text(`For ${supplier}`, 162, 216, { align: 'center' });
-  text(profile.signatoryRole || 'Authorized Signatory', 162, 276, { align: 'center' });
+  text(wrapped(amountInWords(invoice.grandTotal), 104).slice(0, 5), 14, 139);
+  line(summaryEnd); doc.line(125, summaryEnd, 125, summaryBottom);
+  doc.setFont('helvetica', 'bold'); text('BANK & PAYMENT DETAILS', 14, 210);
+  doc.setFont('helvetica', 'normal');
+  text(`Bank: ${profile.bankName || '-'}`, 14, 220); text(`Account No: ${profile.accountNumber || '-'}`, 14, 229); text(`IFSC: ${profile.ifscCode || '-'}`, 14, 238);
+  doc.setFont('helvetica', 'bold'); text(`For ${supplier}`, 162.5, 210, { align: 'center' });
+  line(270, 137, 188);
+  text(profile.signatoryRole || 'Authorized Signatory', 162.5, 276, { align: 'center' });
   doc.setFont('helvetica', 'normal'); doc.setFontSize(7); text('This is a computer generated invoice.', 14, 282);
+  doc.setLineWidth(0.7);
+  doc.rect(left, summaryTop, width, summaryBottom - summaryTop);
+  doc.setLineWidth(0.25);
 
-  const columns = [
+  const baseColumns = [
     ['#', 7], ['Date', 16], ['Truck', 19], ['From', 21], ['To', 21], ['LxWxH', 19],
     ['Bill Wt.', 16], ['Guar. Wt.', 16], ['Net Wt.', 16], ['Freight', 22], ['Rate', 22], ['ODC', 19], ['Halting', 19], ['Balance', 22]
   ];
+  const annexureLeft = 8;
+  const annexureRight = 289;
+  const annexureWidth = annexureRight - annexureLeft;
+  const baseWidth = baseColumns.reduce((sum, [, colWidth]) => sum + colWidth, 0);
+  const columns = baseColumns.map(([label, colWidth], index) => [
+    label,
+    index === baseColumns.length - 1
+      ? annexureWidth - baseColumns.slice(0, -1).reduce((sum, [, value]) => sum + (value * annexureWidth / baseWidth), 0)
+      : colWidth * annexureWidth / baseWidth
+  ]);
   const drawAnnexureHeader = pageNo => {
     doc.setFont('helvetica', 'bold'); doc.setFontSize(14); text('ANNEXURE', 10, 11);
     doc.setFontSize(8); text(`${supplier} | ${invoice.invoiceNo || '-'} | ${client} - ${location}`, 10, 17);
     text(`Page ${pageNo}`, 287, 17, { align: 'right' });
-    doc.setFillColor(226, 232, 240); doc.rect(8, 21, 281, 10, 'F');
-    let x = 8;
+    doc.setFillColor(226, 232, 240); doc.rect(annexureLeft, 21, annexureWidth, 10, 'F');
+    let x = annexureLeft;
     doc.setFontSize(6.5);
     columns.forEach(([label, colWidth]) => { doc.rect(x, 21, colWidth, 10); text(label, x + colWidth / 2, 27, { align: 'center' }); x += colWidth; });
   };
@@ -100,7 +129,7 @@ export function createStandardInvoicePdf({ invoice, profile = {}, amountInWords 
     const values = [index + 1, date(trip.date), trip.vehicle?.regNo || '-', trip.route?.fromLocation || '-', trip.route?.toLocation || '-',
       [trip.length, trip.width, trip.height].map(v => v || '-').join('x'), number(trip.billWeight).toFixed(2), number(trip.guaranteeWeight).toFixed(2), netWeight(trip).toFixed(2),
       amount(freight(trip)), trip.clientCalcType === 'Fixed' ? `${amount(trip.clientRate)} Fixed` : `${amount(trip.clientRate)}/T`, amount(trip.clientExtraSizeCharge), amount(trip.haltingCharge), amount(trip.totalClientBill)];
-    let x = 8; doc.setFont('helvetica', 'normal'); doc.setFontSize(6);
+    let x = annexureLeft; doc.setFont('helvetica', 'normal'); doc.setFontSize(6);
     columns.forEach(([, colWidth], colIndex) => { doc.rect(x, y, colWidth, rowHeight); text(wrapped(values[colIndex], colWidth - 1), x + (colIndex === 0 ? colWidth / 2 : 1), y + 3.5, colIndex === 0 ? { align: 'center' } : {}); x += colWidth; });
     y += rowHeight;
   });
